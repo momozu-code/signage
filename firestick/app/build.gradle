@@ -1,0 +1,51 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Each GitHub build gets a higher version number, so a new APK installs over the old one.
+def buildNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+
+android {
+    namespace 'com.momozu.signage'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.momozu.signage'
+        minSdk 22
+        targetSdk 34
+        versionCode buildNumber
+        versionName "1.0.${buildNumber}"
+        // The page the Fire Stick shows. Change this if the site moves.
+        buildConfigField 'String', 'PLAYER_URL', '"https://momozu-code.github.io/signage/player.html"'
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    signingConfigs {
+        release {
+            storeFile file('signage.keystore')
+            storePassword 'signage-player'
+            keyAlias 'signage'
+            keyPassword 'signage-player'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
