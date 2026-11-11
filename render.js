@@ -16,9 +16,9 @@ window.buildContent = function (c, z, live, timers, alive) {
   alive = alive || (() => true);
   c.style.background = z.bg;
   if (z.type === 'media') {
-    const items = (z.items || []).filter(i => i.url);
+    const items = (z.items || []).filter(i => i.url && i.kind !== 'ticker');
     if (!items.length) {
-      if (!live) { const ph = el('div', 'ph'); ph.append(el('b', null, '＋'), el('span', null, 'Add images or videos')); c.append(ph); }
+      if (!live) { const ph = el('div', 'ph'); ph.append(el('b', null, '▤'), el('span', null, z.playlist_id ? 'Playlist is empty' : 'Choose a playlist')); c.append(ph); }
       return;
     }
     if (!live) {
@@ -62,7 +62,8 @@ window.buildContent = function (c, z, live, timers, alive) {
   }
   if (z.type === 'ticker') {
     c.style.display = 'flex'; c.style.alignItems = 'center';
-    const t = el('div', 'tick', (z.text || '').replace(/\n/g, '  •  '));
+    const msgs = (z.items || []).map(i => i.text).filter(Boolean);
+    const t = el('div', 'tick', (msgs.length ? msgs.join('     •     ') : (z.text || '')).replace(/\n/g, '  •  '));
     Object.assign(t.style, { color: z.color, fontSize: z.fontSize + 'px', fontWeight: z.weight || 700, whiteSpace: 'nowrap', flexShrink: 0 });
     c.append(t);
     requestAnimationFrame(() => {
