@@ -45,11 +45,21 @@ function fmtDate(d) {
   try { return new Date(p[0], p[1] - 1, p[2]).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }); } catch (e) { return String(d).slice(0, 10); }
 }
 function smallStyle(z, ff, kind) {
-  const size = Math.round(z.fontSize * (z.smallScale || 0.42));
+  const size = Math.round(z.fontSize * (z.smallScale || 0.32));
   const st = { color: z.subColor || z.color, opacity: z.subColor ? 1 : 0.75, fontSize: U(size), fontFamily: ff, lineHeight: 1.2, whiteSpace: 'nowrap', fontWeight: 600 };
   if (kind === 'source') { st.textTransform = 'uppercase'; st.letterSpacing = '0.12em'; }
   else { st.fontWeight = 500; }
   return st;
+}
+// One small line above the headline: "SOURCE: Nov 11, 2026" (either part can be hidden).
+function metaLine(z, ff, m, tag) {
+  const showS = z.showSource !== false && m.source, showD = z.showDate !== false && m.date;
+  if (!showS && !showD) return null;
+  const line = el(tag || 'div'); Object.assign(line.style, smallStyle(z, ff, 'date'));
+  if (showS) { const sp = el('span', null, m.source + (showD ? ':' : '')); sp.style.textTransform = 'uppercase'; sp.style.letterSpacing = '0.12em'; sp.style.fontWeight = 600; line.append(sp); }
+  if (showS && showD) line.append(document.createTextNode(' '));
+  if (showD) line.append(document.createTextNode(fmtDate(m.date)));
+  return line;
 }
 function whenFontsReady(cb) { try { if (document.fonts && document.fonts.ready) document.fonts.ready.then(cb); } catch (e) {} }
 
@@ -143,17 +153,11 @@ window.buildContent = function (c, z, live, timers, alive) {
         alignItems: z.align === 'left' ? 'flex-start' : 'center', padding: '0 ' + U(48), boxSizing: 'border-box', overflow: 'hidden',
         transition: 'transform .6s ease, opacity .6s ease', webkitTransition: '-webkit-transform .6s ease, opacity .6s ease' });
       const gap = U(Math.round(z.fontSize * 0.12));
-      if (z.showSource !== false && m.source) {
-        const sl = el('div', null, m.source); Object.assign(sl.style, smallStyle(z, ff, 'source')); sl.style.marginBottom = gap;
-        if (m.sample) sl.style.opacity = 0.45; d.append(sl);
-      }
+      const meta = metaLine(z, ff, m);
+      if (meta) { meta.style.marginBottom = gap; if (m.sample) meta.style.opacity = 0.45; d.append(meta); }
       const t = el('div', null, m.text);
       Object.assign(t.style, { color: z.color, fontSize: U(z.fontSize), fontWeight: z.weight || 700, fontFamily: ff, whiteSpace: 'nowrap', lineHeight: 1.15, textAlign: z.align === 'left' ? 'left' : 'center' });
       d.append(t);
-      if (z.showDate !== false && m.date) {
-        const dl = el('div', null, fmtDate(m.date)); Object.assign(dl.style, smallStyle(z, ff, 'date')); dl.style.marginTop = gap;
-        if (m.sample) dl.style.opacity = 0.45; d.append(dl);
-      }
       return { d, t };
     };
     // Shrink a long announcement to fit the zone; past 60% size, let it wrap instead.
@@ -197,9 +201,9 @@ window.buildContent = function (c, z, live, timers, alive) {
     const ffs = fontFamily(z);
     items.forEach((it, k) => {
       if (k) t.append(document.createTextNode('     •     '));
-      if (z.showSource !== false && it.source) { const sp = el('span', null, it.source + '  '); Object.assign(sp.style, smallStyle(z, ffs, 'source')); sp.style.verticalAlign = 'middle'; t.append(sp); }
+      const meta = metaLine(z, ffs, it, 'span');
+      if (meta) { meta.style.verticalAlign = 'middle'; meta.style.marginRight = '0.6em'; t.append(meta); }
       t.append(document.createTextNode(it.text.replace(/\n/g, ' ')));
-      if (z.showDate !== false && it.date) { const sp = el('span', null, '  ' + fmtDate(it.date)); Object.assign(sp.style, smallStyle(z, ffs, 'date')); sp.style.verticalAlign = 'middle'; t.append(sp); }
     });
     Object.assign(t.style, { color: z.color, fontSize: U(z.fontSize), fontWeight: z.weight || 700, whiteSpace: 'nowrap', flexShrink: 0, fontFamily: fontFamily(z) });
     c.append(t);
