@@ -1,0 +1,42 @@
+name: Build Fire Stick app
+
+on:
+  push:
+    paths:
+      - 'firestick/**'
+      - '.github/workflows/firestick.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build APK
+        working-directory: firestick
+        run: gradle assembleRelease --no-daemon
+
+      - name: Name the APK
+        run: cp firestick/app/build/outputs/apk/release/app-release.apk signage-player.apk
+
+      - name: Publish to the download link
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: player-latest
+          name: Signage Player (latest)
+          body: "Install on a Fire Stick with the Downloader app from: https://github.com/${{ github.repository }}/releases/download/player-latest/signage-player.apk"
+          files: signage-player.apk
+          make_latest: true
