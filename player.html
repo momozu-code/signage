@@ -6,7 +6,8 @@
 <title>Signage Player</title>
 <style>
 html,body{margin:0;height:100%;background:#000;color:#fff;overflow:hidden;font-family:Inter,Roboto,system-ui,sans-serif;cursor:none}
-#stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform-origin:50% 50%;overflow:hidden}
+#stage{position:absolute;left:0;top:0;width:1920px;height:1080px;-webkit-transform-origin:0 0;transform-origin:0 0;overflow:hidden}
+#diag{position:fixed;left:8px;bottom:8px;z-index:9;background:rgba(0,0,0,.85);color:#9f9;font:13px/1.35 monospace;padding:8px 10px;border-radius:6px;max-width:70%;white-space:pre-wrap;pointer-events:none}
 .zone{position:absolute}
 .zc{position:absolute;top:0;right:0;bottom:0;left:0;overflow:hidden}
 .m{position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;transition:opacity .6s ease}
@@ -27,6 +28,7 @@ html,body{margin:0;height:100%;background:#000;color:#fff;overflow:hidden;font-f
   <p id="pairMsg">In your Signage dashboard, open <b>Screens</b> and enter this code.</p>
 </div>
 <div id="status"></div>
+<div id="diag" hidden></div>
 
 <script src="supabase.js"></script>
 <script src="config.js"></script>
@@ -34,6 +36,7 @@ html,body{margin:0;height:100%;background:#000;color:#fff;overflow:hidden;font-f
 <script>
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: false } });
 const stage = document.getElementById('stage'), pair = document.getElementById('pair');
+const browserVer = (navigator.userAgent.match(/Chrome\/(\d+)/) || [])[1] || '?';
 const POLL_MS = 15000;
 
 function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
@@ -45,8 +48,39 @@ let device = store('signage.device');
 if (!device) { device = newId(); store('signage.device', device); }
 
 let shownKey = null, timers = [], session = 0;
-function fit() { const s = Math.min(innerWidth / SIGN_W, innerHeight / SIGN_H); stage.style.transform = `translate(-50%,-50%) scale(${s})`; }
+// Size the 1920x1080 design to the TV. Uses whichever viewport size the browser reports, and re-checks often,
+// because some Fire TV browsers report the size late or wrongly at start-up.
+let lastScale = 0;
+function viewport() {
+  const d = document.documentElement;
+  const w = Math.max(window.innerWidth || 0, d.clientWidth || 0), h = Math.max(window.innerHeight || 0, d.clientHeight || 0);
+  return { w: w || 1920, h: h || 1080 };
+}
+function fit() {
+  const v = viewport(), s = Math.min(v.w / SIGN_W, v.h / SIGN_H);
+  const x = Math.round((v.w - SIGN_W * s) / 2), y = Math.round((v.h - SIGN_H * s) / 2);
+  const t = 'translate(' + x + 'px,' + y + 'px) scale(' + s + ')';
+  stage.style.webkitTransform = t; stage.style.transform = t; lastScale = s;
+}
 addEventListener('resize', fit);
+setInterval(fit, 3000);
+
+// Temporary on-screen info for the first 40 seconds after a layout loads, to diagnose display problems.
+const errors = [];
+window.addEventListener('error', e => { errors.push((e.message || 'error') + (e.filename ? ' @' + e.filename.split('/').pop() + ':' + e.lineno : '')); }, true);
+function diag() {
+  const v = viewport(), box = document.getElementById('diag');
+  const zs = [...stage.querySelectorAll('.zone')].map((z, i) => {
+    const r = z.getBoundingClientRect(), c = z.firstChild, cr = c ? c.getBoundingClientRect() : { width: 0, height: 0 };
+    const m = c && c.querySelector('img,video');
+    const media = m ? (m.tagName === 'VIDEO' ? 'video ' + (m.error ? 'ERR' + m.error.code : 'rs' + m.readyState) : 'img ' + (m.complete ? (m.naturalWidth ? 'ok' : 'FAIL') : 'loading')) : '';
+    return (i + 1) + ' ' + (z.dataset.type || '?') + ' @' + Math.round(r.left) + ',' + Math.round(r.top) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height) + ' inner ' + Math.round(cr.width) + 'x' + Math.round(cr.height) + ' ' + media;
+  });
+  box.textContent = 'Browser ' + browserVer + ' · viewport ' + v.w + 'x' + v.h + ' (inner ' + innerWidth + 'x' + innerHeight + ') · dpr ' + (window.devicePixelRatio || 1) + ' · scale ' + lastScale.toFixed(3) +
+    '\n' + zs.join('\n') + (errors.length ? '\nErrors: ' + errors.slice(-3).join(' | ') : '');
+}
+let diagUntil = 0;
+setInterval(() => { const box = document.getElementById('diag'); if (Date.now() < diagUntil && !stage.hidden) { box.hidden = false; diag(); } else box.hidden = true; }, 1000);
 
 function clearStage() {
   session++; timers.forEach(clearTimeout); timers = [];
@@ -59,9 +93,9 @@ function showLayout(L) {
   shownKey = key; clearStage();
   const mine = session;
   pair.hidden = true; stage.hidden = false;
-  stage.style.background = L.bg || '#000'; fit();
+  stage.style.background = L.bg || '#000'; fit(); diagUntil = Date.now() + 40000;
   (L.zones || []).forEach(z => {
-    const e = el('div', 'zone'); place(e, z);
+    const e = el('div', 'zone'); e.dataset.type = z.type; place(e, z);
     const c = el('div', 'zc'); e.append(c); stage.append(e);
     buildContent(c, z, true, timers, () => mine === session);
   });
@@ -72,7 +106,6 @@ function showPair(code, msg) {
   document.getElementById('code').textContent = code || '········';
   if (msg) document.getElementById('pairMsg').textContent = msg;
 }
-const browserVer = (navigator.userAgent.match(/Chrome\/(\d+)/) || [])[1] || '?';
 function status(t) { document.getElementById('status').textContent = t || (pair.hidden ? '' : 'Browser ' + browserVer); }
 
 async function poll() {
