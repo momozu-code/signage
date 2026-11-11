@@ -8,10 +8,10 @@
 html,body{margin:0;height:100%;background:#000;color:#fff;overflow:hidden;font-family:Inter,Roboto,system-ui,sans-serif;cursor:none}
 #stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform-origin:50% 50%;overflow:hidden}
 .zone{position:absolute}
-.zc{position:absolute;inset:0;overflow:hidden}
-.m{position:absolute;inset:0;width:100%;height:100%;transition:opacity .6s ease}
+.zc{position:absolute;top:0;right:0;bottom:0;left:0;overflow:hidden}
+.m{position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;transition:opacity .6s ease}
 .tick{will-change:transform}
-#pair{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;background:radial-gradient(circle at 50% 40%,#1d2230,#07080b 70%);text-align:center;padding:40px}
+#pair{position:absolute;top:0;right:0;bottom:0;left:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;background:radial-gradient(circle at 50% 40%,#1d2230,#07080b 70%);text-align:center;padding:40px}
 #pair h1{margin:0;font-size:44px;font-weight:700}
 #pair .code{font-size:150px;font-weight:800;letter-spacing:.12em;color:#ff8a3d;font-variant-numeric:tabular-nums;line-height:1}
 #pair p{margin:0;font-size:30px;color:#9aa1b2;max-width:1200px}
@@ -72,7 +72,8 @@ function showPair(code, msg) {
   document.getElementById('code').textContent = code || '········';
   if (msg) document.getElementById('pairMsg').textContent = msg;
 }
-function status(t) { document.getElementById('status').textContent = t; }
+const browserVer = (navigator.userAgent.match(/Chrome\/(\d+)/) || [])[1] || '?';
+function status(t) { document.getElementById('status').textContent = t || (pair.hidden ? '' : 'Browser ' + browserVer); }
 
 async function poll() {
   try {
