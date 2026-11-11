@@ -330,7 +330,7 @@ header select{width:auto;min-width:150px}
 
 <script src="supabase.js?v=5"></script>
 <script src="config.js?v=5"></script>
-<script src="render.js?v=8"></script>
+<script src="render.js?v=9"></script>
 <script>
 /* ================= basics ================= */
 const W = SIGN_W, H = SIGN_H;
@@ -686,7 +686,14 @@ function renderInspector() {
     insp.append(fld('Align', seg([['left', 'Left'], ['center', 'Center'], ['right', 'Right']], z.align, v => upd(() => z.align = v))));
     insp.append(fld('Vertical', seg([['top', 'Top'], ['center', 'Middle'], ['bottom', 'Bottom']], z.valign, v => upd(() => z.valign = v))));
   }
-  if (z.type === 'ticker') insp.append(fld('Speed', inp('range', z.speed, i => upd(() => z.speed = +i.value), { min: 40, max: 500, step: 10 })));
+  if (z.type === 'ticker') {
+    insp.append(fld('Style', seg([['scroll', 'Scrolling'], ['slides', 'One at a time']], z.mode === 'slides' ? 'slides' : 'scroll', v => upd(() => z.mode = v, true))));
+    if (z.mode === 'slides') {
+      insp.append(fld('Transition', seg([['up', 'Slide up'], ['left', 'Slide left'], ['fade', 'Fade']], z.transition || 'up', v => upd(() => z.transition = v))));
+      insp.append(fld('Align', seg([['center', 'Center'], ['left', 'Left']], z.align === 'left' ? 'left' : 'center', v => upd(() => z.align = v))));
+      insp.append(el('div', 'muted', 'Each announcement in the ticker playlist shows on its own for its set time (8 s unless changed). Long ones shrink to fit. Use ▶ Preview to see the transitions.'));
+    } else insp.append(fld('Speed', inp('range', z.speed, i => upd(() => z.speed = +i.value), { min: 40, max: 500, step: 10 })));
+  }
   if (z.type === 'clock') {
     const r = el('div', 'row');
     r.append(fld('Size (px)', inp('number', z.fontSize, i => upd(() => z.fontSize = Math.max(16, +i.value || 100)), { min: 16 })), fld('Colour', inp('color', z.color, i => upd(() => z.color = i.value))));
@@ -836,8 +843,8 @@ function contentCard(c) {
     Object.assign(c, patch); toast(f ? 'Moved to ' + f.name : 'Removed from folder'); renderContent();
   };
   acts.append(fs);
-  if (c.kind === 'image') {
-    const du = el('input'); du.type = 'number'; du.min = 1; du.value = c.duration; du.title = 'Seconds on screen'; du.style.width = '58px'; du.disabled = !editable;
+  if (c.kind === 'image' || c.kind === 'ticker') {
+    const du = el('input'); du.type = 'number'; du.min = 1; du.value = c.duration; du.title = c.kind === 'ticker' ? 'Seconds on screen when the ticker shows one announcement at a time' : 'Seconds on screen'; du.style.width = '58px'; du.disabled = !editable;
     du.oninput = () => { c.duration = Math.max(1, +du.value || 8); queueSave('content:' + c.id, () => sb.from('content').update({ duration: c.duration }).eq('id', c.id)); };
     acts.append(du, el('span', 'muted', 's'));
   }
@@ -944,7 +951,7 @@ function renderPlEditor() {
   pv.onclick = () => {
     const items = playlistItems(p);
     if (!items.length) return toast('Add some content first');
-    if (p.kind === 'ticker') playZones('#000', [Object.assign(zone('ticker', 0, 85, 100, 15), { items })]);
+    if (p.kind === 'ticker') playZones('#000', [Object.assign(zone('ticker', 0, 70, 100, 15), { items, mode: 'slides' }), Object.assign(zone('ticker', 0, 85, 100, 15), { items, bg: '#141414', color: '#f6f4ee' })]);
     else playZones('#000', [Object.assign(zone('media', 0, 0, 100, 100), { items })]);
   };
   head.append(pv);
@@ -976,7 +983,7 @@ function renderPlEditor() {
     if (c.kind === 'image') th.style.backgroundImage = `url("${encodeURI(c.url)}")`; else th.textContent = c.kind === 'video' ? '▶ VIDEO' : 'TEXT';
     const nm = el('div'); nm.append(el('div', 'nm', c.name), el('div', 'muted', c.kind === 'ticker' ? (c.body || '').slice(0, 60) : c.kind));
     const ctl = el('div', 'ctl');
-    if (c.kind === 'image') {
+    if (c.kind === 'image' || c.kind === 'ticker') {
       const d = el('input'); d.type = 'number'; d.min = 1; d.value = it.duration || ''; d.placeholder = String(c.duration); d.title = 'Seconds on screen'; d.disabled = !editable;
       d.oninput = () => { const v = +d.value; if (v > 0) it.duration = v; else delete it.duration; savePl(p); };
       ctl.append(d, el('span', 'muted', 's'));
@@ -990,7 +997,7 @@ function renderPlEditor() {
   if (!(p.items || []).length) ed.append(el('div', 'note', 'Empty. Pick content below to add it.'));
   ed.append(items);
   if (p.kind === 'media' && (p.items || []).length) ed.append(el('div', 'muted', 'Images: ' + total + 's' + (videos ? ' + ' + videos + ' video(s) at full length' : '') + '. The playlist loops.'));
-  if (p.kind === 'ticker' && (p.items || []).length) ed.append(el('div', 'muted', 'Messages scroll one after another, separated by •'));
+  if (p.kind === 'ticker' && (p.items || []).length) ed.append(el('div', 'muted', 'In a scrolling ticker the messages run one after another, separated by •. In "One at a time" tickers each shows for its seconds.'));
 
   // picker
   if (!editable) return;

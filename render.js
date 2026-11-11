@@ -92,6 +92,56 @@ window.buildContent = function (c, z, live, timers, alive) {
     Object.assign(t.style, { color: z.color, fontSize: U(z.fontSize), fontWeight: z.weight, textAlign: z.align, whiteSpace: 'pre-wrap', lineHeight: 1.2, fontFamily: fontFamily(z) });
     c.append(t); return;
   }
+  if (z.type === 'ticker' && z.mode === 'slides') {
+    // One announcement at a time: hold each for its duration, then slide or fade to the next.
+    let msgs = (z.items || []).filter(i => i.text).map(i => ({ text: i.text, dur: +i.duration || 8 }));
+    if (!msgs.length) msgs = String(z.text || '').split('\n').map(t => t.trim()).filter(Boolean).map(t => ({ text: t, dur: 8 }));
+    if (!msgs.length) return;
+    const dir = z.transition || 'up', ff = fontFamily(z);
+    const off = sign => dir === 'left' ? 'translateX(' + (sign * 100) + '%)' : dir === 'up' ? 'translateY(' + (sign * 100) + '%)' : 'translateX(0)';
+    const make = txt => {
+      const d = el('div');
+      Object.assign(d.style, { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', alignItems: 'center',
+        justifyContent: z.align === 'left' ? 'flex-start' : 'center', padding: '0 ' + U(48), boxSizing: 'border-box', overflow: 'hidden',
+        transition: 'transform .6s ease, opacity .6s ease', webkitTransition: '-webkit-transform .6s ease, opacity .6s ease' });
+      const t = el('span', null, txt);
+      Object.assign(t.style, { color: z.color, fontSize: U(z.fontSize), fontWeight: z.weight || 700, fontFamily: ff, whiteSpace: 'nowrap', lineHeight: 1.15, textAlign: z.align === 'left' ? 'left' : 'center' });
+      d.append(t);
+      return { d, t };
+    };
+    // Shrink a long announcement to fit the zone; past 60% size, let it wrap instead.
+    const fit = (box, t) => {
+      t.style.fontSize = U(z.fontSize); t.style.whiteSpace = 'nowrap';
+      const room = box.clientWidth - 2 * (parseFloat(getComputedStyle(box).paddingLeft) || 0);
+      if (!room || t.offsetWidth <= room) return;
+      const r = room / t.offsetWidth;
+      if (r >= 0.6) t.style.fontSize = U(Math.floor(z.fontSize * r));
+      else { t.style.fontSize = U(Math.floor(z.fontSize * 0.6)); t.style.whiteSpace = 'normal'; }
+    };
+    let i = 0, cur = null;
+    const show = first => {
+      const m = msgs[i % msgs.length]; i++;
+      const s = make(m.text);
+      const animate = live && msgs.length > 1 && !first;
+      if (animate) { s.d.style.transform = s.d.style.webkitTransform = off(1); if (dir === 'fade') s.d.style.opacity = 0; }
+      c.append(s.d);
+      fit(s.d, s.t);
+      if (z.font) whenFontsReady(() => fit(s.d, s.t));
+      if (animate) {
+        const old = cur;
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          s.d.style.transform = s.d.style.webkitTransform = 'translateX(0)'; s.d.style.opacity = 1;
+          if (old) { old.style.transform = old.style.webkitTransform = off(-1); if (dir === 'fade') old.style.opacity = 0; }
+        }));
+        if (old) timers.push(setTimeout(() => old.remove(), 700));
+      } else if (cur) cur.remove();
+      cur = s.d;
+      if (live && msgs.length > 1) timers.push(setTimeout(() => { if (alive()) show(false); }, Math.max(2, m.dur) * 1000));
+    };
+    c.style.position = 'absolute'; c.style.overflow = 'hidden';
+    show(true);
+    return;
+  }
   if (z.type === 'ticker') {
     c.style.display = 'flex'; c.style.alignItems = 'center';
     const msgs = (z.items || []).map(i => i.text).filter(Boolean);
