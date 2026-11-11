@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Signage Player</title>
 <style>
-html,body{margin:0;height:100%;background:#000;color:#fff;overflow:hidden;font-family:Inter,Roboto,system-ui,sans-serif;cursor:none}
-#stage{position:absolute;left:0;top:0;width:1920px;height:1080px;-webkit-transform-origin:0 0;transform-origin:0 0;overflow:hidden}
-#diag{position:fixed;left:8px;bottom:8px;z-index:9;background:rgba(0,0,0,.85);color:#9f9;font:13px/1.35 monospace;padding:8px 10px;border-radius:6px;max-width:70%;white-space:pre-wrap;pointer-events:none}
+html,body{margin:0;width:100%;height:100%;background:#000;color:#fff;overflow:hidden;font-family:Inter,Roboto,system-ui,sans-serif;cursor:none}
+#stage{position:absolute;left:0;top:0;width:100%;height:100%;overflow:hidden}
+#diag{position:absolute;left:8px;bottom:8px;z-index:9;background:rgba(0,0,0,.85);color:#9f9;font:13px/1.35 monospace;padding:8px 10px;border-radius:6px;max-width:70%;white-space:pre-wrap;pointer-events:none}
 .zone{position:absolute}
 .zc{position:absolute;top:0;right:0;bottom:0;left:0;overflow:hidden}
 .m{position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;transition:opacity .6s ease}
@@ -30,9 +30,9 @@ html,body{margin:0;height:100%;background:#000;color:#fff;overflow:hidden;font-f
 <div id="status"></div>
 <div id="diag" hidden></div>
 
-<script src="supabase.js"></script>
-<script src="config.js"></script>
-<script src="render.js"></script>
+<script src="supabase.js?v=7"></script>
+<script src="config.js?v=7"></script>
+<script src="render.js?v=7"></script>
 <script>
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: false } });
 const stage = document.getElementById('stage'), pair = document.getElementById('pair');
@@ -50,20 +50,13 @@ if (!device) { device = newId(); store('signage.device', device); }
 let shownKey = null, timers = [], session = 0;
 // Size the 1920x1080 design to the TV. Uses whichever viewport size the browser reports, and re-checks often,
 // because some Fire TV browsers report the size late or wrongly at start-up.
-let lastScale = 0;
+// The layout fills the screen with plain CSS (100% width/height, zones in %),
+// and text sizes use screen-width units, so nothing depends on the browser reporting its size.
+window.SIGN_PX = function (n) { return (n / 19.2).toFixed(3) + 'vw'; };
 function viewport() {
   const d = document.documentElement;
-  const w = Math.max(window.innerWidth || 0, d.clientWidth || 0), h = Math.max(window.innerHeight || 0, d.clientHeight || 0);
-  return { w: w || 1920, h: h || 1080 };
+  return { w: d.clientWidth || window.innerWidth || 0, h: d.clientHeight || window.innerHeight || 0 };
 }
-function fit() {
-  const v = viewport(), s = Math.min(v.w / SIGN_W, v.h / SIGN_H);
-  const x = Math.round((v.w - SIGN_W * s) / 2), y = Math.round((v.h - SIGN_H * s) / 2);
-  const t = 'translate(' + x + 'px,' + y + 'px) scale(' + s + ')';
-  stage.style.webkitTransform = t; stage.style.transform = t; lastScale = s;
-}
-addEventListener('resize', fit);
-setInterval(fit, 3000);
 
 // Temporary on-screen info for the first 40 seconds after a layout loads, to diagnose display problems.
 const errors = [];
@@ -76,7 +69,7 @@ function diag() {
     const media = m ? (m.tagName === 'VIDEO' ? 'video ' + (m.error ? 'ERR' + m.error.code : 'rs' + m.readyState) : 'img ' + (m.complete ? (m.naturalWidth ? 'ok' : 'FAIL') : 'loading')) : '';
     return (i + 1) + ' ' + (z.dataset.type || '?') + ' @' + Math.round(r.left) + ',' + Math.round(r.top) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height) + ' inner ' + Math.round(cr.width) + 'x' + Math.round(cr.height) + ' ' + media;
   });
-  box.textContent = 'Browser ' + browserVer + ' · viewport ' + v.w + 'x' + v.h + ' (inner ' + innerWidth + 'x' + innerHeight + ') · dpr ' + (window.devicePixelRatio || 1) + ' · scale ' + lastScale.toFixed(3) +
+  box.textContent = 'Player v7 · Browser ' + browserVer + ' · viewport ' + v.w + 'x' + v.h + ' (inner ' + innerWidth + 'x' + innerHeight + ') · dpr ' + (window.devicePixelRatio || 1) + '' +
     '\n' + zs.join('\n') + (errors.length ? '\nErrors: ' + errors.slice(-3).join(' | ') : '');
 }
 let diagUntil = 0;
@@ -87,13 +80,15 @@ function clearStage() {
   stage.querySelectorAll('video').forEach(v => v.pause());
   stage.innerHTML = '';
 }
+let currentLayout = null, renderedAt = '';
 function showLayout(L) {
+  currentLayout = L;
   const key = JSON.stringify(L);
   if (key === shownKey) return;
-  shownKey = key; clearStage();
+  shownKey = key; clearStage(); renderedAt = vpKey();
   const mine = session;
   pair.hidden = true; stage.hidden = false;
-  stage.style.background = L.bg || '#000'; fit(); diagUntil = Date.now() + 40000;
+  stage.style.background = L.bg || '#000'; if (/debug/.test(location.search + location.hash)) diagUntil = Date.now() + 40000;
   (L.zones || []).forEach(z => {
     const e = el('div', 'zone'); e.dataset.type = z.type; place(e, z);
     const c = el('div', 'zc'); e.append(c); stage.append(e);
@@ -141,9 +136,43 @@ async function poll() {
 async function wake() { try { if (navigator.wakeLock) await navigator.wakeLock.request('screen'); } catch (e) {} }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
 
-const last = store('signage.lastLayout');
-if (last) { try { showLayout(JSON.parse(last)); } catch (e) {} }
-wake(); poll(); setInterval(poll, POLL_MS);
+// If the screen size changes after drawing (Fire TV settles its size a moment after start-up),
+// draw the layout again so videos get the right size. Same as pressing the Menu button.
+function vpKey() { const v = viewport(); return v.w + 'x' + v.h; }
+function redrawIfResized() {
+  if (currentLayout && shownKey !== null && vpKey() !== renderedAt) { shownKey = null; showLayout(currentLayout); }
+}
+addEventListener('resize', () => setTimeout(redrawIfResized, 400));
+
+// Coming back to the app (e.g. after the Home button): redraw so the video gets the right size again.
+function redrawSoon(ms) { setTimeout(() => { if (currentLayout) { shownKey = null; showLayout(currentLayout); } }, ms || 800); }
+let wentHidden = false;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') wentHidden = true;
+  else if (wentHidden) { wentHidden = false; redrawSoon(); }   // only after really leaving, not during start-up
+});
+addEventListener('pageshow', e => { if (e.persisted) redrawSoon(); });
+let lastTick = Date.now();
+setInterval(() => { const now = Date.now(); if (now - lastTick > 6000) redrawSoon(300); lastTick = now; }, 1000);  // timers were paused
+setInterval(redrawIfResized, 2000);
+
+// Start only once the screen size has stayed the same for a moment.
+function whenStable(cb) {
+  let prev = '', same = 0, tries = 0;
+  const t = setInterval(() => {
+    const k = vpKey(); tries++;
+    same = (k === prev && !/^0x|x0$/.test(k)) ? same + 1 : 0; prev = k;
+    if (same >= 3 || tries > 25) { clearInterval(t); cb(); }
+  }, 200);
+}
+whenStable(() => {
+  const last = store('signage.lastLayout');
+  if (last) { try { showLayout(JSON.parse(last)); } catch (e) {} }
+  poll(); setInterval(poll, POLL_MS);
+  // One extra redraw shortly after start-up, in case the video surface was sized before the screen settled.
+  setTimeout(() => { if (currentLayout) { shownKey = null; showLayout(currentLayout); } }, 4000);
+});
+wake();
 </script>
 </body>
 </html>

@@ -71,6 +71,10 @@ window.buildContent = function (c, z, live, timers, alive) {
         if (items.length === 1) m.loop = true; else m.onended = next;
         m.onerror = () => timers.push(setTimeout(next, 3000));
         const p = m.play && m.play(); if (p && p.catch) p.catch(() => {});
+        // Fire TV draws video on a separate layer that can keep a stale size. Nudging the element's size
+        // once it starts playing (and again shortly after) makes it re-measure.
+        const nudge = () => { if (!m.isConnected) return; m.style.width = '99.9%'; requestAnimationFrame(() => requestAnimationFrame(() => { m.style.width = '100%'; })); };
+        m.addEventListener('playing', () => { nudge(); timers.push(setTimeout(nudge, 1000)); timers.push(setTimeout(nudge, 3000)); });
       } else {
         m = el('img', 'm'); m.src = it.url;
         if (items.length > 1) timers.push(setTimeout(next, Math.max(1, +it.duration || 8) * 1000));
