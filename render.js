@@ -1,5 +1,8 @@
 // Shared by the editor (index.html) and the player (player.html): draws one zone's content.
 window.SIGN_W = 1920; window.SIGN_H = 1080;
+// Sizes are designed for a 1920px-wide screen. The player swaps this for screen-relative units.
+window.SIGN_PX = window.SIGN_PX || function (n) { return n + 'px'; };
+function U(n) { return window.SIGN_PX(n); }
 
 window.el = function (tag, cls, txt) {
   const e = document.createElement(tag);
@@ -55,16 +58,16 @@ window.buildContent = function (c, z, live, timers, alive) {
     c.style.display = 'flex';
     c.style.justifyContent = { left: 'flex-start', center: 'center', right: 'flex-end' }[z.align] || 'center';
     c.style.alignItems = { top: 'flex-start', center: 'center', bottom: 'flex-end' }[z.valign] || 'center';
-    c.style.padding = '48px';
+    c.style.padding = U(48);
     const t = el('div', null, z.text);
-    Object.assign(t.style, { color: z.color, fontSize: z.fontSize + 'px', fontWeight: z.weight, textAlign: z.align, whiteSpace: 'pre-wrap', lineHeight: 1.2 });
+    Object.assign(t.style, { color: z.color, fontSize: U(z.fontSize), fontWeight: z.weight, textAlign: z.align, whiteSpace: 'pre-wrap', lineHeight: 1.2 });
     c.append(t); return;
   }
   if (z.type === 'ticker') {
     c.style.display = 'flex'; c.style.alignItems = 'center';
     const msgs = (z.items || []).map(i => i.text).filter(Boolean);
     const t = el('div', 'tick', (msgs.length ? msgs.join('     •     ') : (z.text || '')).replace(/\n/g, '  •  '));
-    Object.assign(t.style, { color: z.color, fontSize: z.fontSize + 'px', fontWeight: z.weight || 700, whiteSpace: 'nowrap', flexShrink: 0 });
+    Object.assign(t.style, { color: z.color, fontSize: U(z.fontSize), fontWeight: z.weight || 700, whiteSpace: 'nowrap', flexShrink: 0 });
     c.append(t);
     requestAnimationFrame(() => {
       const bw = c.offsetWidth, tw = t.offsetWidth;
@@ -77,8 +80,8 @@ window.buildContent = function (c, z, live, timers, alive) {
   if (z.type === 'clock') {
     c.style.display = 'flex'; c.style.flexDirection = 'column'; c.style.alignItems = 'center'; c.style.justifyContent = 'center';
     const tm = el('div'), dt = el('div');
-    Object.assign(tm.style, { color: z.color, fontSize: z.fontSize + 'px', fontWeight: 700, lineHeight: 1, letterSpacing: '-.02em', fontVariantNumeric: 'tabular-nums' });
-    Object.assign(dt.style, { color: z.color, opacity: .7, fontSize: Math.round(z.fontSize * .32) + 'px', marginTop: Math.round(z.fontSize * .18) + 'px', fontWeight: 500 });
+    Object.assign(tm.style, { color: z.color, fontSize: U(z.fontSize), fontWeight: 700, lineHeight: 1, letterSpacing: '-.02em', fontVariantNumeric: 'tabular-nums' });
+    Object.assign(dt.style, { color: z.color, opacity: .7, fontSize: U(Math.round(z.fontSize * .32)), marginTop: U(Math.round(z.fontSize * .18)), fontWeight: 500 });
     const tick = () => {
       const d = new Date();
       tm.textContent = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: z.format !== '24' });
