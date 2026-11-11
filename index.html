@@ -330,7 +330,7 @@ header select{width:auto;min-width:150px}
 
 <script src="supabase.js?v=5"></script>
 <script src="config.js?v=5"></script>
-<script src="render.js?v=12"></script>
+<script src="render.js?v=13"></script>
 <script>
 /* ================= basics ================= */
 const W = SIGN_W, H = SIGN_H;
@@ -692,8 +692,9 @@ function renderInspector() {
     insp.append(fld('Date line', seg([['1', 'Show'], ['0', 'Hide']], z.showDate === false ? '0' : '1', v => upd(() => z.showDate = v === '1'))));
     const sr = el('div', 'row');
     sr.append(fld('Small text size', inp('range', Math.round((z.smallScale || 0.32) * 100), i => upd(() => z.smallScale = (+i.value) / 100), { min: 25, max: 70, step: 1 })));
-    const sc = inp('color', z.subColor || z.color, i => upd(() => z.subColor = i.value));
-    const scw = el('div'); scw.append(sc); const rs = el('button', 'sm ghost', 'Same as text'); rs.type = 'button'; rs.onclick = () => upd(() => delete z.subColor, true); scw.append(rs);
+    const sc = inp('color', z.subColor || '#fa0060', i => upd(() => z.subColor = i.value));
+    const scw = el('div'); scw.append(sc); const rs = el('button', 'sm ghost', 'Same as text'); rs.type = 'button'; rs.onclick = () => upd(() => z.subColor = z.color, true);
+    const rr = el('button', 'sm ghost', 'ibex red'); rr.type = 'button'; rr.onclick = () => upd(() => delete z.subColor, true); scw.append(rr); scw.append(rs);
     sr.append(fld('Small text colour', scw)); insp.append(sr);
     if (z.mode === 'slides') {
       insp.append(fld('Transition', seg([['up', 'Slide up'], ['left', 'Slide left'], ['fade', 'Fade']], z.transition || 'up', v => upd(() => z.transition = v))));

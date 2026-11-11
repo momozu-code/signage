@@ -46,7 +46,7 @@ function fmtDate(d) {
 }
 function smallStyle(z, ff, kind) {
   const size = Math.round(z.fontSize * (z.smallScale || 0.32));
-  const st = { color: z.subColor || z.color, opacity: z.subColor ? 1 : 0.75, fontSize: U(size), fontFamily: ff, lineHeight: 1.2, whiteSpace: 'nowrap', fontWeight: 600 };
+  const st = { color: z.subColor || '#FA0060', opacity: 1, fontSize: U(size), fontFamily: ff, lineHeight: 1.2, whiteSpace: 'nowrap', fontWeight: 600 };
   if (kind === 'source') { st.textTransform = 'uppercase'; st.letterSpacing = '0.12em'; }
   else { st.fontWeight = 500; }
   return st;
