@@ -37,6 +37,20 @@ window.releaseMedia = function (n) {
 };
 // The player can supply a locally saved copy of a file (see player.html); otherwise use the web address.
 function mediaSrc(url) { return window.SIGN_MEDIA ? window.SIGN_MEDIA(url) : url; }
+// Ticker announcement parts: small source line, headline, small date line.
+function fmtDate(d) {
+  if (!d) return '';
+  const p = String(d).slice(0, 10).split('-').map(Number);
+  if (p.length < 3 || !p[0]) return '';
+  try { return new Date(p[0], p[1] - 1, p[2]).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }); } catch (e) { return String(d).slice(0, 10); }
+}
+function smallStyle(z, ff, kind) {
+  const size = Math.round(z.fontSize * (z.smallScale || 0.42));
+  const st = { color: z.subColor || z.color, opacity: z.subColor ? 1 : 0.75, fontSize: U(size), fontFamily: ff, lineHeight: 1.2, whiteSpace: 'nowrap', fontWeight: 600 };
+  if (kind === 'source') { st.textTransform = 'uppercase'; st.letterSpacing = '0.12em'; }
+  else { st.fontWeight = 500; }
+  return st;
+}
 function whenFontsReady(cb) { try { if (document.fonts && document.fonts.ready) document.fonts.ready.then(cb); } catch (e) {} }
 
 window.el = function (tag, cls, txt) {
@@ -117,26 +131,36 @@ window.buildContent = function (c, z, live, timers, alive) {
   }
   if (z.type === 'ticker' && z.mode === 'slides') {
     // One announcement at a time: hold each for its duration, then slide or fade to the next.
-    let msgs = (z.items || []).filter(i => i.text).map(i => ({ text: i.text, dur: +i.duration || 8 }));
-    if (!msgs.length) msgs = String(z.text || '').split('\n').map(t => t.trim()).filter(Boolean).map(t => ({ text: t, dur: 8 }));
+    let msgs = (z.items || []).filter(i => i.text).map(i => ({ text: i.text, source: i.source, date: i.date, dur: +i.duration || 8 }));
+    if (!msgs.length) msgs = String(z.text || '').split('\n').map(t => t.trim()).filter(Boolean)
+      .map(t => ({ text: t, dur: 8, source: live ? '' : 'Department', date: live ? '' : new Date().toISOString().slice(0, 10), sample: !live }));
     if (!msgs.length) return;
     const dir = z.transition || 'up', ff = fontFamily(z);
     const off = sign => dir === 'left' ? 'translateX(' + (sign * 100) + '%)' : dir === 'up' ? 'translateY(' + (sign * 100) + '%)' : 'translateX(0)';
-    const make = txt => {
+    const make = m => {
       const d = el('div');
-      Object.assign(d.style, { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', alignItems: 'center',
-        justifyContent: z.align === 'left' ? 'flex-start' : 'center', padding: '0 ' + U(48), boxSizing: 'border-box', overflow: 'hidden',
+      Object.assign(d.style, { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center',
+        alignItems: z.align === 'left' ? 'flex-start' : 'center', padding: '0 ' + U(48), boxSizing: 'border-box', overflow: 'hidden',
         transition: 'transform .6s ease, opacity .6s ease', webkitTransition: '-webkit-transform .6s ease, opacity .6s ease' });
-      const t = el('span', null, txt);
+      const gap = U(Math.round(z.fontSize * 0.12));
+      if (z.showSource !== false && m.source) {
+        const sl = el('div', null, m.source); Object.assign(sl.style, smallStyle(z, ff, 'source')); sl.style.marginBottom = gap;
+        if (m.sample) sl.style.opacity = 0.45; d.append(sl);
+      }
+      const t = el('div', null, m.text);
       Object.assign(t.style, { color: z.color, fontSize: U(z.fontSize), fontWeight: z.weight || 700, fontFamily: ff, whiteSpace: 'nowrap', lineHeight: 1.15, textAlign: z.align === 'left' ? 'left' : 'center' });
       d.append(t);
+      if (z.showDate !== false && m.date) {
+        const dl = el('div', null, fmtDate(m.date)); Object.assign(dl.style, smallStyle(z, ff, 'date')); dl.style.marginTop = gap;
+        if (m.sample) dl.style.opacity = 0.45; d.append(dl);
+      }
       return { d, t };
     };
     // Shrink a long announcement to fit the zone; past 60% size, let it wrap instead.
     const fit = (box, t) => {
       t.style.fontSize = U(z.fontSize); t.style.whiteSpace = 'nowrap';
       const room = box.clientWidth - 2 * (parseFloat(getComputedStyle(box).paddingLeft) || 0);
-      if (!room || t.offsetWidth <= room) return;
+      if (!(room > 0) || t.offsetWidth <= room) return;
       const r = room / t.offsetWidth;
       if (r >= 0.6) t.style.fontSize = U(Math.floor(z.fontSize * r));
       else { t.style.fontSize = U(Math.floor(z.fontSize * 0.6)); t.style.whiteSpace = 'normal'; }
@@ -144,7 +168,7 @@ window.buildContent = function (c, z, live, timers, alive) {
     let i = 0, cur = null;
     const show = first => {
       const m = msgs[i % msgs.length]; i++;
-      const s = make(m.text);
+      const s = make(m);
       const animate = live && msgs.length > 1 && !first;
       if (animate) { s.d.style.transform = s.d.style.webkitTransform = off(1); if (dir === 'fade') s.d.style.opacity = 0; }
       c.append(s.d);
@@ -167,8 +191,16 @@ window.buildContent = function (c, z, live, timers, alive) {
   }
   if (z.type === 'ticker') {
     c.style.display = 'flex'; c.style.alignItems = 'center';
-    const msgs = (z.items || []).map(i => i.text).filter(Boolean);
-    const t = el('div', 'tick', (msgs.length ? msgs.join('     •     ') : (z.text || '')).replace(/\n/g, '  •  '));
+    const items = (z.items || []).filter(i => i.text);
+    const t = el('div', 'tick');
+    if (!items.length) t.textContent = String(z.text || '').replace(/\n/g, '  •  ');
+    const ffs = fontFamily(z);
+    items.forEach((it, k) => {
+      if (k) t.append(document.createTextNode('     •     '));
+      if (z.showSource !== false && it.source) { const sp = el('span', null, it.source + '  '); Object.assign(sp.style, smallStyle(z, ffs, 'source')); sp.style.verticalAlign = 'middle'; t.append(sp); }
+      t.append(document.createTextNode(it.text.replace(/\n/g, ' ')));
+      if (z.showDate !== false && it.date) { const sp = el('span', null, '  ' + fmtDate(it.date)); Object.assign(sp.style, smallStyle(z, ffs, 'date')); sp.style.verticalAlign = 'middle'; t.append(sp); }
+    });
     Object.assign(t.style, { color: z.color, fontSize: U(z.fontSize), fontWeight: z.weight || 700, whiteSpace: 'nowrap', flexShrink: 0, fontFamily: fontFamily(z) });
     c.append(t);
     let anim = null;

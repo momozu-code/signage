@@ -330,7 +330,7 @@ header select{width:auto;min-width:150px}
 
 <script src="supabase.js?v=5"></script>
 <script src="config.js?v=5"></script>
-<script src="render.js?v=10"></script>
+<script src="render.js?v=11"></script>
 <script>
 /* ================= basics ================= */
 const W = SIGN_W, H = SIGN_H;
@@ -435,7 +435,7 @@ function playlistItems(pl) {
   if (!pl) return [];
   return (pl.items || []).map(it => {
     const c = D.content.find(x => x.id === it.content_id); if (!c) return null;
-    return { id: c.id, kind: c.kind, url: c.url, name: c.name, text: c.body, duration: it.duration || c.duration };
+    return { id: c.id, kind: c.kind, url: c.url, name: c.name, text: c.body, source: c.source, date: c.published_on, duration: it.duration || c.duration };
   }).filter(Boolean);
 }
 function resolveZone(z, overrides) {
@@ -688,6 +688,13 @@ function renderInspector() {
   }
   if (z.type === 'ticker') {
     insp.append(fld('Style', seg([['scroll', 'Scrolling'], ['slides', 'One at a time']], z.mode === 'slides' ? 'slides' : 'scroll', v => upd(() => z.mode = v, true))));
+    insp.append(fld('Source line (department)', seg([['1', 'Show'], ['0', 'Hide']], z.showSource === false ? '0' : '1', v => upd(() => z.showSource = v === '1'))));
+    insp.append(fld('Date line', seg([['1', 'Show'], ['0', 'Hide']], z.showDate === false ? '0' : '1', v => upd(() => z.showDate = v === '1'))));
+    const sr = el('div', 'row');
+    sr.append(fld('Small text size', inp('range', Math.round((z.smallScale || 0.42) * 100), i => upd(() => z.smallScale = (+i.value) / 100), { min: 25, max: 70, step: 1 })));
+    const sc = inp('color', z.subColor || z.color, i => upd(() => z.subColor = i.value));
+    const scw = el('div'); scw.append(sc); const rs = el('button', 'sm ghost', 'Same as text'); rs.type = 'button'; rs.onclick = () => upd(() => delete z.subColor, true); scw.append(rs);
+    sr.append(fld('Small text colour', scw)); insp.append(sr);
     if (z.mode === 'slides') {
       insp.append(fld('Transition', seg([['up', 'Slide up'], ['left', 'Slide left'], ['fade', 'Fade']], z.transition || 'up', v => upd(() => z.transition = v))));
       insp.append(fld('Align', seg([['center', 'Center'], ['left', 'Left']], z.align === 'left' ? 'left' : 'center', v => upd(() => z.align = v))));
@@ -808,6 +815,8 @@ function renderContent() {
   else if (curFolder !== 'all') list = list.filter(c => c.folder_id === curFolder);
   if (kindFilter !== 'all') list = list.filter(c => c.kind === kindFilter);
   if (cSearch) list = list.filter(c => (c.name + ' ' + (c.body || '')).toLowerCase().includes(cSearch));
+  let dl = document.getElementById('sourceList'); if (!dl) { dl = el('datalist'); dl.id = 'sourceList'; document.body.append(dl); }
+  dl.innerHTML = ''; [...new Set(D.content.map(c => c.source).filter(Boolean))].sort().forEach(v => { const o = el('option'); o.value = v; dl.append(o); });
   const g = $('#cGrid'); g.innerHTML = '';
   if (!list.length) g.append(el('div', 'empty', items.length ? 'Nothing matches here.' : 'No content yet. Upload images or videos, or add a ticker message. You can also drag files onto this area.'));
   list.forEach(c => g.append(contentCard(c)));
@@ -816,7 +825,7 @@ function thumb(c, cls) {
   const t = el('div', cls || 'th');
   if (c.kind === 'image') t.style.backgroundImage = `url("${encodeURI(c.url || '')}")`;
   else if (c.kind === 'video') { const v = el('video'); v.muted = true; v.preload = 'metadata'; v.src = (c.url || '') + '#t=0.5'; t.append(v, el('span', 'play', '▶ VIDEO')); }
-  else { t.classList.add('tk'); t.textContent = (c.body || '').slice(0, 90); }
+  else { t.classList.add('tk'); t.textContent = (c.source ? c.source.toUpperCase() + ' · ' : '') + (c.body || '').slice(0, 90); }
   return t;
 }
 function contentCard(c) {
@@ -829,7 +838,12 @@ function contentCard(c) {
   if (c.kind === 'ticker') {
     const ta = el('textarea'); ta.value = c.body || ''; ta.disabled = !editable; ta.rows = 3;
     ta.oninput = () => { c.body = ta.value; card.querySelector('.th').textContent = ta.value.slice(0, 90); queueSave('content:' + c.id, () => sb.from('content').update({ body: c.body }).eq('id', c.id)); };
-    bd.append(ta);
+    ta.placeholder = 'Headline';
+    const src = el('input'); src.value = c.source || ''; src.placeholder = 'Source / department, e.g. HR'; src.disabled = !editable; src.setAttribute('list', 'sourceList');
+    src.oninput = () => { c.source = src.value.trim() || null; queueSave('content:' + c.id, () => sb.from('content').update({ source: c.source }).eq('id', c.id)); };
+    const dt = el('input'); dt.type = 'date'; dt.value = c.published_on || ''; dt.disabled = !editable; dt.title = 'Publish date shown under the headline';
+    dt.onchange = () => { c.published_on = dt.value || null; queueSave('content:' + c.id, () => sb.from('content').update({ published_on: c.published_on }).eq('id', c.id), 0); };
+    bd.append(src, ta, dt);
   }
   const meta = el('div', 'meta'); meta.append(siteBadge(c.site_id), el('span', null, c.kind + (c.size ? ' · ' + fmtSize(c.size) : '')));
   bd.append(meta);
@@ -903,7 +917,8 @@ cm.addEventListener('dragleave', () => cm.classList.remove('drop'));
 cm.addEventListener('drop', e => { e.preventDefault(); cm.classList.remove('drop'); if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files); });
 $('#addTicker').onclick = async () => {
   const t = targetForNew(); if (!t) return;
-  const row = { id: uuid(), kind: 'ticker', name: 'Ticker message', body: 'Type your message here', duration: 8, folder_id: t.folder_id, site_id: t.site_id };
+  const d0 = new Date(), today = d0.getFullYear() + '-' + String(d0.getMonth() + 1).padStart(2, '0') + '-' + String(d0.getDate()).padStart(2, '0');
+  const row = { id: uuid(), kind: 'ticker', name: 'Ticker message', body: 'Type your headline here', source: null, published_on: today, duration: 8, folder_id: t.folder_id, site_id: t.site_id };
   const { error } = await sb.from('content').insert(row); if (error) return toast(error.message);
   D.content.unshift(row); if (kindFilter !== 'all' && kindFilter !== 'ticker') kindFilter = 'all'; renderContent(); toast('Ticker message added. Edit its text on the card');
 };
@@ -981,7 +996,7 @@ function renderPlEditor() {
     if (c.kind === 'image') total += +(it.duration || c.duration); if (c.kind === 'video') videos++;
     const th = el('div', 'th' + (c.kind === 'ticker' ? ' tk' : ''));
     if (c.kind === 'image') th.style.backgroundImage = `url("${encodeURI(c.url)}")`; else th.textContent = c.kind === 'video' ? '▶ VIDEO' : 'TEXT';
-    const nm = el('div'); nm.append(el('div', 'nm', c.name), el('div', 'muted', c.kind === 'ticker' ? (c.body || '').slice(0, 60) : c.kind));
+    const nm = el('div'); nm.append(el('div', 'nm', c.name), el('div', 'muted', c.kind === 'ticker' ? (c.source ? c.source + ' · ' : '') + (c.body || '').slice(0, 60) + (c.published_on ? ' · ' + c.published_on : '') : c.kind));
     const ctl = el('div', 'ctl');
     if (c.kind === 'image' || c.kind === 'ticker') {
       const d = el('input'); d.type = 'number'; d.min = 1; d.value = it.duration || ''; d.placeholder = String(c.duration); d.title = 'Seconds on screen'; d.disabled = !editable;
