@@ -31,6 +31,12 @@ function fontFamily(z) {
   ensureFont(z.font, z.fontUrl);
   return '"' + z.font.replace(/["\\]/g, '') + '", Inter, Roboto, sans-serif';
 }
+// Release a video fully (file and decoder), not just pause it. Fire TV has very few video decoders.
+window.releaseMedia = function (n) {
+  if (n && n.tagName === 'VIDEO') { try { n.onended = n.onerror = null; n.pause(); n.removeAttribute('src'); n.load(); } catch (e) {} }
+};
+// The player can supply a locally saved copy of a file (see player.html); otherwise use the web address.
+function mediaSrc(url) { return window.SIGN_MEDIA ? window.SIGN_MEDIA(url) : url; }
 function whenFontsReady(cb) { try { if (document.fonts && document.fonts.ready) document.fonts.ready.then(cb); } catch (e) {} }
 
 window.el = function (tag, cls, txt) {
@@ -61,24 +67,41 @@ window.buildContent = function (c, z, live, timers, alive) {
       if (items.length > 1) c.append(el('div', 'badge', items.length + ' items'));
       return;
     }
-    let i = 0, curEl = null;
+    // A timeout that removes itself from the list once it has run, so the list doesn't grow forever.
+    const later = (fn, ms) => { const id = setTimeout(() => { const k = timers.indexOf(id); if (k >= 0) timers.splice(k, 1); fn(); }, ms); timers.push(id); };
+    let i = 0, curEl = null, loops = 0;
     const next = () => { if (alive()) show(); };
     const show = () => {
       const it = items[i % items.length]; i++;
       let m;
       if (it.kind === 'video') {
-        m = el('video', 'm'); m.muted = true; m.playsInline = true; m.autoplay = true; m.src = it.url;
-        if (items.length === 1) m.loop = true; else m.onended = next;
-        m.onerror = () => timers.push(setTimeout(next, 3000));
+        m = el('video', 'm'); m.muted = true; m.playsInline = true; m.autoplay = true; m.preload = 'auto'; m.src = mediaSrc(it.url);
+        if (items.length === 1) {
+          // Single video: restart it by hand instead of the built-in loop (which leaks on Fire TV),
+          // and swap in a fresh video element every 10 plays.
+          m.onended = () => {
+            if (!alive()) return;
+            loops++;
+            if (loops % 10 === 0) { show(); return; }
+            try { m.currentTime = 0; const p2 = m.play(); if (p2 && p2.catch) p2.catch(() => {}); } catch (e) { show(); }
+          };
+        } else m.onended = next;
+        m.onerror = () => later(next, 3000);
         const p = m.play && m.play(); if (p && p.catch) p.catch(() => {});
       } else {
-        m = el('img', 'm'); m.src = it.url;
-        if (items.length > 1) timers.push(setTimeout(next, Math.max(1, +it.duration || 8) * 1000));
+        m = el('img', 'm'); m.src = mediaSrc(it.url);
+        if (items.length > 1) later(next, Math.max(1, +it.duration || 8) * 1000);
       }
-      m.style.objectFit = z.fit; m.style.opacity = 0; c.append(m);
-      requestAnimationFrame(() => requestAnimationFrame(() => { m.style.opacity = 1; }));
+      m.style.objectFit = z.fit;
       const old = curEl; curEl = m;
-      if (old) timers.push(setTimeout(() => { if (old.pause) old.pause(); old.remove(); }, 700));
+      const fade = !!old && items.length > 1;
+      if (fade) m.style.opacity = 0;
+      c.append(m);
+      if (fade) requestAnimationFrame(() => requestAnimationFrame(() => { m.style.opacity = 1; }));
+      if (old) {
+        if (fade) later(() => { releaseMedia(old); old.remove(); }, 700);
+        else { releaseMedia(old); old.remove(); }
+      }
     };
     show();
     return;
@@ -133,10 +156,10 @@ window.buildContent = function (c, z, live, timers, alive) {
           s.d.style.transform = s.d.style.webkitTransform = 'translateX(0)'; s.d.style.opacity = 1;
           if (old) { old.style.transform = old.style.webkitTransform = off(-1); if (dir === 'fade') old.style.opacity = 0; }
         }));
-        if (old) timers.push(setTimeout(() => old.remove(), 700));
+        if (old) { const id = setTimeout(() => { const k = timers.indexOf(id); if (k >= 0) timers.splice(k, 1); old.remove(); }, 700); timers.push(id); }
       } else if (cur) cur.remove();
       cur = s.d;
-      if (live && msgs.length > 1) timers.push(setTimeout(() => { if (alive()) show(false); }, Math.max(2, m.dur) * 1000));
+      if (live && msgs.length > 1) { const id = setTimeout(() => { const k = timers.indexOf(id); if (k >= 0) timers.splice(k, 1); if (alive()) show(false); }, Math.max(2, m.dur) * 1000); timers.push(id); }
     };
     c.style.position = 'absolute'; c.style.overflow = 'hidden';
     show(true);

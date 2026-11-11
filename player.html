@@ -30,9 +30,9 @@ html,body{margin:0;width:100%;height:100%;background:#000;color:#fff;overflow:hi
 <div id="status"></div>
 <div id="diag" hidden></div>
 
-<script src="supabase.js?v=9"></script>
-<script src="config.js?v=9"></script>
-<script src="render.js?v=9"></script>
+<script src="supabase.js?v=10"></script>
+<script src="config.js?v=10"></script>
+<script src="render.js?v=10"></script>
 <script>
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: false } });
 const stage = document.getElementById('stage'), pair = document.getElementById('pair');
@@ -69,7 +69,7 @@ function diag() {
     const media = m ? (m.tagName === 'VIDEO' ? 'video ' + (m.error ? 'ERR' + m.error.code : 'rs' + m.readyState) : 'img ' + (m.complete ? (m.naturalWidth ? 'ok' : 'FAIL') : 'loading')) : '';
     return (i + 1) + ' ' + (z.dataset.type || '?') + ' @' + Math.round(r.left) + ',' + Math.round(r.top) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height) + ' inner ' + Math.round(cr.width) + 'x' + Math.round(cr.height) + ' ' + media;
   });
-  box.textContent = 'Player v9 · Browser ' + browserVer + ' · viewport ' + v.w + 'x' + v.h + ' (inner ' + innerWidth + 'x' + innerHeight + ') · dpr ' + (window.devicePixelRatio || 1) + '' +
+  box.textContent = 'Player v10 · Browser ' + browserVer + ' · viewport ' + v.w + 'x' + v.h + ' (inner ' + innerWidth + 'x' + innerHeight + ') · dpr ' + (window.devicePixelRatio || 1) + '' +
     '\n' + zs.join('\n') + (errors.length ? '\nErrors: ' + errors.slice(-3).join(' | ') : '');
 }
 let diagUntil = 0;
@@ -77,8 +77,38 @@ setInterval(() => { const box = document.getElementById('diag'); if (Date.now() 
 
 function clearStage() {
   session++; timers.forEach(clearTimeout); timers = [];
-  stage.querySelectorAll('video').forEach(v => v.pause());
+  stage.querySelectorAll('video').forEach(v => releaseMedia(v));
   stage.innerHTML = '';
+}
+
+// Keep a copy of each video on the Fire Stick, so loops play from local storage instead of
+// downloading the file again every time. Images are already kept by the browser.
+const MEDIA_CACHE = 'ibexmecs-media-v1';
+const localUrl = {};
+window.SIGN_MEDIA = url => localUrl[url] || url;
+let saving = Promise.resolve();
+function saveVideos(L) { saving = saving.then(() => saveVideosNow(L)); }
+async function saveVideosNow(L) {
+  if (!window.caches || !window.fetch) return;
+  const urls = [];
+  (L.zones || []).forEach(z => (z.items || []).forEach(it => { if (it.kind === 'video' && it.url) urls.push(it.url); }));
+  try {
+    const cache = await caches.open(MEDIA_CACHE);
+    for (const url of urls) {
+      if (localUrl[url]) continue;
+      let res = await cache.match(url);
+      if (!res) {
+        const net = await fetch(url, { mode: 'cors' });
+        if (!net.ok) continue;
+        await cache.put(url, net.clone()); res = net;
+      }
+      localUrl[url] = URL.createObjectURL(await res.blob());
+    }
+    // Forget videos that are no longer used by this screen.
+    const keep = new Set(urls);
+    (await cache.keys()).forEach(req => { if (!keep.has(req.url)) cache.delete(req); });
+    Object.keys(localUrl).forEach(u => { if (!keep.has(u)) { URL.revokeObjectURL(localUrl[u]); delete localUrl[u]; } });
+  } catch (e) { /* storage unavailable or full: keep streaming from the web */ }
 }
 let currentLayout = null, renderedAt = '';
 function showLayout(L) {
@@ -86,6 +116,7 @@ function showLayout(L) {
   const key = JSON.stringify(L);
   if (key === shownKey) return;
   shownKey = key; clearStage(); renderedAt = vpKey();
+  saveVideos(L);
   const mine = session;
   pair.hidden = true; stage.hidden = false;
   stage.style.background = L.bg || '#000'; if (/debug/.test(location.search + location.hash)) diagUntil = Date.now() + 40000;
