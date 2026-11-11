@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Signage Layout Editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0e1014;--panel:#161920;--panel2:#1c2029;--line:#272c37;--text:#e9ebf1;--muted:#8a90a0;--accent:#ff8a3d;--accent2:#ffb27d;--danger:#ff5a5f}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.4 Inter,system-ui,sans-serif}
+button,input,select,textarea{font:inherit;color:inherit}
+button{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer}
+button:hover{border-color:#3a4150}
+button.primary{background:var(--accent);border-color:var(--accent);color:#1a1006;font-weight:700}
+button.primary:hover{background:var(--accent2)}
+button.danger{color:var(--danger)}
+button.ghost{background:transparent}
+input,select,textarea{background:#0f1218;border:1px solid var(--line);border-radius:7px;padding:7px 9px;width:100%}
+input[type=color]{padding:2px;height:34px}
+input[type=checkbox]{width:auto}
+textarea{resize:vertical;min-height:80px}
+label{display:block;font-size:12px;color:var(--muted);margin:0 0 4px}
+header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
+header .brand{font-weight:800;letter-spacing:-.01em;margin-right:6px}
+header .brand span{color:var(--accent)}
+header select{width:auto;min-width:160px}
+header .grow{flex:1}
+.app{display:grid;grid-template-columns:230px 1fr 300px;height:calc(100% - 57px)}
+aside{background:var(--panel);overflow:auto;padding:14px}
+aside.left{border-right:1px solid var(--line)}
+aside.right{border-left:1px solid var(--line)}
+h3{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:4px 0 10px;font-weight:600}
+.tpls{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+.tpl{background:transparent;border:1px solid var(--line);padding:6px;border-radius:9px;text-align:left}
+.tpl .mini{position:relative;aspect-ratio:16/9;background:#000;border-radius:4px;overflow:hidden;margin-bottom:5px}
+.tpl .mini i{position:absolute;outline:1px solid #000;border-radius:1px}
+.tpl small{font-size:11px;color:var(--muted)}
+.adds{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.adds button{font-size:13px}
+main{overflow:auto;padding:20px;display:flex;flex-direction:column;gap:10px;min-width:0}
+#stageWrap{position:relative;width:100%;max-width:1400px;margin:0 auto;box-shadow:0 10px 40px rgba(0,0,0,.5);border-radius:4px;overflow:hidden;background:#000}
+#stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;overflow:hidden;touch-action:none}
+.hint{max-width:1400px;margin:0 auto;width:100%;color:var(--muted);font-size:12px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.zone{position:absolute;touch-action:none;cursor:move}
+.zone .zc{position:absolute;inset:0;overflow:hidden}
+#stage .zone::after{content:"";position:absolute;inset:0;outline:calc(var(--u)*1) dashed rgba(255,255,255,.25);outline-offset:calc(var(--u)*-1);pointer-events:none}
+#stage .zone.sel::after{outline:calc(var(--u)*3) solid var(--accent);outline-offset:calc(var(--u)*-3)}
+.ztag{position:absolute;left:calc(var(--u)*6);top:calc(var(--u)*6);background:rgba(0,0,0,.65);color:#fff;font-size:calc(var(--u)*11);padding:calc(var(--u)*2) calc(var(--u)*7);border-radius:calc(var(--u)*4);pointer-events:none;font-weight:600;white-space:nowrap}
+.zone.sel .ztag{background:var(--accent);color:#1a1006}
+.h{position:absolute;width:calc(var(--u)*16);height:calc(var(--u)*16);background:#fff;border:calc(var(--u)*2) solid var(--accent);border-radius:50%;z-index:2}
+.h-nw{left:calc(var(--u)*-8);top:calc(var(--u)*-8);cursor:nwse-resize}
+.h-ne{right:calc(var(--u)*-8);top:calc(var(--u)*-8);cursor:nesw-resize}
+.h-sw{left:calc(var(--u)*-8);bottom:calc(var(--u)*-8);cursor:nesw-resize}
+.h-se{right:calc(var(--u)*-8);bottom:calc(var(--u)*-8);cursor:nwse-resize}
+.zone.sel .h-nw{left:0;top:0}.zone.sel .h-ne{right:0;top:0}.zone.sel .h-sw{left:0;bottom:0}.zone.sel .h-se{right:0;bottom:0}
+.m{position:absolute;inset:0;width:100%;height:100%;transition:opacity .6s ease}
+.ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:rgba(255,255,255,.55);font-size:30px;font-weight:600;text-align:center;padding:20px;background:repeating-linear-gradient(45deg,#14171d 0 24px,#181c23 24px 48px)}
+.ph b{font-size:60px;font-weight:300;line-height:1}
+.badge{position:absolute;right:12px;bottom:12px;background:rgba(0,0,0,.7);color:#fff;font-size:22px;padding:4px 12px;border-radius:8px;font-weight:600}
+.tick{white-space:nowrap;flex-shrink:0;will-change:transform}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.row4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px}
+.field{margin-bottom:10px}
+.seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{flex:1;border:0;border-radius:0;background:#0f1218;padding:6px 0}
+.seg button.on{background:var(--accent);color:#1a1006;font-weight:700}
+.items{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.item{display:grid;grid-template-columns:44px 1fr auto;gap:8px;align-items:center;background:#0f1218;border:1px solid var(--line);border-radius:8px;padding:6px}
+.item .th{width:44px;height:28px;border-radius:4px;background:#222 center/cover;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--muted)}
+.item .nm{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .ctl{display:flex;gap:3px;align-items:center}
+.item .ctl button{padding:3px 7px;font-size:12px}
+.item .ctl input{width:52px;padding:3px 5px;font-size:12px}
+.file{position:relative;display:block;text-align:center;border:1px dashed #3a4150;border-radius:8px;padding:12px;color:var(--accent);font-weight:600;cursor:pointer;margin-bottom:12px}
+.file input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.note{font-size:12px;color:var(--muted);background:#0f1218;border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:14px}
+hr{border:0;border-top:1px solid var(--line);margin:14px 0}
+#player{position:fixed;inset:0;background:#000;z-index:50;overflow:hidden;cursor:none}
+#player.show-ui{cursor:default}
+#pstage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform-origin:50% 50%;overflow:hidden}
+#exitBtn{position:absolute;top:14px;right:14px;z-index:5;opacity:0;transition:opacity .3s;background:rgba(0,0,0,.6);border-color:#444}
+#player.show-ui #exitBtn{opacity:1}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:60;padding:20px}
+#modal .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;width:min(640px,100%)}
+#modal textarea{height:300px;font:12px/1.4 ui-monospace,Menlo,monospace}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#fff;color:#111;padding:9px 16px;border-radius:9px;font-weight:600;z-index:70;opacity:0;transition:opacity .25s;pointer-events:none}
+#toast.on{opacity:1}
+[hidden]{display:none!important}
+.muted{color:var(--muted);font-size:12px}
+header .brand span,#login .brand span{color:var(--accent)}
+#login{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:80;padding:20px}
+#login .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px;width:min(360px,100%)}
+#screens{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-start;justify-content:center;z-index:60;padding:40px 16px;overflow:auto}
+#screens .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;width:min(720px,100%)}
+.pairrow{display:grid;grid-template-columns:1fr 1.4fr auto;gap:8px;margin:14px 0 18px}
+.slist{display:flex;flex-direction:column;gap:8px}
+.scr{display:grid;grid-template-columns:auto 1.2fr 1.2fr auto;gap:10px;align-items:center;background:#0f1218;border:1px solid var(--line);border-radius:10px;padding:10px}
+.dot{width:10px;height:10px;border-radius:50%;background:#555}.dot.on{background:#39d98a;box-shadow:0 0 8px #39d98a}
+.scr small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+@media (max-width:600px){.pairrow{grid-template-columns:1fr}.scr{grid-template-columns:auto 1fr;}.scr>select,.scr>button{grid-column:2}}
+@media (max-width:980px){
+  .app{display:flex;flex-direction:column;height:auto}
+  main{order:1;padding:12px}
+  aside.right{order:2;border:0;border-top:1px solid var(--line)}
+  aside.left{order:3;border:0;border-top:1px solid var(--line)}
+  .tpls{grid-template-columns:repeat(3,1fr)}
+  .adds{grid-template-columns:repeat(4,1fr)}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">Signage<span>.</span>Layouts</div>
+  <select id="layoutSel" aria-label="Layout"></select>
+  <button id="dupLayout">Duplicate</button>
+  <button id="delLayout" class="danger">Delete</button>
+  <div class="grow"></div>
+  <span id="saveStatus" class="muted"></span>
+  <button id="screensBtn">📺 Screens</button>
+  <button id="exportBtn">Export JSON</button>
+  <button id="playBtn" class="primary">▶ Preview</button>
+  <button id="signOut" class="ghost" title="Sign out">Sign out</button>
+</header>
+<div class="app">
+  <aside class="left">
+    <h3>New layout from template</h3>
+    <div class="tpls" id="tpls"></div>
+    <h3>Add zone</h3>
+    <div class="adds">
+      <button data-add="media">＋ Media</button>
+      <button data-add="text">＋ Text</button>
+      <button data-add="ticker">＋ Ticker</button>
+      <button data-add="clock">＋ Clock</button>
+    </div>
+    <div class="note">Changes save to Supabase automatically. Screens pick them up within about 15 seconds.<br><br>Player page for the Fire Stick: <b>player.html</b> next to this page.</div>
+  </aside>
+  <main>
+    <div id="stageWrap"><div id="stage"></div></div>
+    <div class="hint"><span>Drag zones to move, use the corner dots to resize. Edges snap to each other. Main zones stay 16:9.</span><span>1920 × 1080 · 16:9</span></div>
+  </main>
+  <aside class="right" id="insp"></aside>
+</div>
+
+<div id="player" hidden>
+  <button id="exitBtn">✕ Exit</button>
+  <div id="pstage"></div>
+</div>
+<div id="modal" hidden><div class="box">
+  <h3 id="mTitle">Layout JSON</h3>
+  <textarea id="mText" readonly></textarea>
+  <div class="btns" style="justify-content:flex-end;margin-top:10px">
+    <button id="mCopy" class="primary">Copy</button><button id="mClose">Close</button>
+  </div>
+</div></div>
+<div id="toast"></div>
+<div id="login" hidden><form class="box" id="loginForm">
+  <div class="brand" style="font-size:20px;margin-bottom:14px">Signage<span>.</span>Layouts</div>
+  <div class="field"><label>Email</label><input id="lEmail" type="email" autocomplete="username" required></div>
+  <div class="field"><label>Password</label><input id="lPass" type="password" autocomplete="current-password" required></div>
+  <button class="primary" style="width:100%">Sign in</button>
+  <div id="lErr" style="color:var(--danger);font-size:12px;margin-top:10px"></div>
+</form></div>
+<div id="screens" hidden><div class="box">
+  <div style="display:flex;justify-content:space-between;align-items:center"><h3 style="margin:0">Screens</h3><button id="sClose">Close</button></div>
+  <form id="pairForm" class="pairrow">
+    <input id="pCode" inputmode="numeric" maxlength="8" placeholder="8-digit code on the TV" required>
+    <input id="pName" placeholder="Screen name, e.g. Front counter">
+    <button class="primary">Pair</button>
+  </form>
+  <div id="sList" class="slist"></div>
+</div></div>
+
+<script src="supabase.js"></script>
+<script src="config.js"></script>
+<script src="render.js"></script>
+<script>
+const W = SIGN_W, H = SIGN_H;
+const $ = s => document.querySelector(s);
+const uid = () => Math.random().toString(36).slice(2, 10);
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); }));
+const sb = supabase.createClient(SB_URL, SB_KEY);
+
+/* ---------- storage (Supabase) ---------- */
+let state = { layouts: [], currentId: null };
+let saveT = null; const pending = new Set();
+function setStatus(t) { $('#saveStatus').textContent = t; }
+function save() {
+  const L = cur(); if (!L) return;
+  pending.add(L.id); setStatus('Saving…');
+  try { localStorage.setItem('signage.current', state.currentId); } catch (e) {}
+  clearTimeout(saveT); saveT = setTimeout(flush, 700);
+}
+async function flush() {
+  const ids = [...pending]; pending.clear();
+  const rows = state.layouts.filter(l => ids.includes(l.id)).map(l => ({ id: l.id, name: l.name, data: { bg: l.bg, zones: l.zones }, updated_at: new Date().toISOString() }));
+  if (!rows.length) return;
+  const { error } = await sb.from('layouts').upsert(rows);
+  if (error) { ids.forEach(i => pending.add(i)); setStatus('Not saved: ' + error.message); toast('Save failed, retrying'); clearTimeout(saveT); saveT = setTimeout(flush, 5000); }
+  else if (!pending.size) setStatus('Saved');
+}
+addEventListener('beforeunload', e => { if (pending.size) { e.preventDefault(); e.returnValue = ''; } });
+async function loadLayouts() {
+  const { data, error } = await sb.from('layouts').select('*').order('updated_at');
+  if (error) { toast('Could not load layouts: ' + error.message); return; }
+  state.layouts = data.map(r => ({ id: r.id, name: r.name, bg: (r.data && r.data.bg) || '#000000', zones: (r.data && r.data.zones) || [] }));
+  let c = null; try { c = localStorage.getItem('signage.current'); } catch (e) {}
+  state.currentId = state.layouts.some(l => l.id === c) ? c : (state.layouts[0] && state.layouts[0].id);
+}
+/* ---------- model ---------- */
+const DEF = {
+  media:  { name: 'Media', bg: '#000000', items: [], fit: 'cover' },
+  text:   { name: 'Text', bg: '#1b1f27', color: '#ffffff', text: 'Your message here', fontSize: 72, weight: 700, align: 'center', valign: 'center' },
+  ticker: { name: 'Ticker', bg: '#ff8a3d', color: '#1a1006', text: 'Welcome! Ask our staff about today\'s specials  •  Open daily 8am – 10pm', fontSize: 52, speed: 160, weight: 700 },
+  clock:  { name: 'Clock', bg: '#111318', color: '#ffffff', fontSize: 120, format: '12', showDate: true }
+};
+function zone(type, x, y, w, h, extra) {
+  const z = Object.assign({ id: uid(), type, x, y, w, h }, JSON.parse(JSON.stringify(DEF[type])), extra || {});
+  if (z.type === 'media' && z.name === 'Main' && z.lock === undefined) z.lock = true;
+  return z;
+}
+/* 16:9 lock: on a 1920x1080 canvas a zone is 16:9 exactly when its width % equals its height % */
+function enforceLock(z) {
+  if (!z.lock) return;
+  const s = Math.min(z.w, z.h, 100 - z.x, 100 - z.y); z.w = z.h = +s.toFixed(2);
+}
+const TPL = {
+  full:    { name: 'Full screen', z: () => [zone('media', 0, 0, 100, 100, { name: 'Main' })] },
+  sidebar: { name: 'Main + side', z: () => [zone('media', 0, 0, 70, 70, { name: 'Main' }), zone('text', 70, 0, 30, 100, { name: 'Side', text: 'Today\'s\nSpecial', fontSize: 88 }), zone('text', 0, 70, 70, 30, { name: 'Bottom', text: 'Open daily 8am – 10pm', fontSize: 64, bg: '#111318' })] },
+  ticker:  { name: 'Main + ticker', z: () => [zone('media', 0, 0, 85, 85, { name: 'Main' }), zone('clock', 85, 0, 15, 85, { fontSize: 56, showDate: false }), zone('ticker', 0, 85, 100, 15)] },
+  lshape:  { name: 'L-shape', z: () => [zone('media', 0, 0, 82, 82, { name: 'Main' }), zone('clock', 82, 0, 18, 32, { fontSize: 64 }), zone('text', 82, 32, 18, 50, { name: 'Promo', text: '20% off\nall week', fontSize: 52 }), zone('ticker', 0, 82, 100, 18)] },
+  quad:    { name: 'Quad', z: () => [zone('media', 0, 0, 50, 50, { name: 'A' }), zone('media', 50, 0, 50, 50, { name: 'B' }), zone('media', 0, 50, 50, 50, { name: 'C' }), zone('media', 50, 50, 50, 50, { name: 'D' })] },
+  menu:    { name: 'Menu board', z: () => [
+    zone('text', 0, 0, 100, 16, { name: 'Header', text: 'Today\'s Menu', fontSize: 96, bg: '#ff8a3d', color: '#1a1006', weight: 800 }),
+    zone('text', 0, 16, 33.5, 84, { name: 'Column 1', text: 'COFFEE\n\nEspresso ........ 120\nLatte ............ 160\nCappuccino ....... 150\nCold Brew ........ 170', fontSize: 50, align: 'left', valign: 'top', weight: 500 }),
+    zone('text', 33.5, 16, 33, 84, { name: 'Column 2', text: 'FOOD\n\nCroissant ........ 110\nBagel ............ 130\nSandwich ......... 220\nSalad ............ 240', fontSize: 50, align: 'left', valign: 'top', weight: 500, bg: '#151920' }),
+    zone('media', 66.5, 16, 33.5, 84, { name: 'Photo' })] }
+};
+const TYPE_COL = { media: '#3a4558', text: '#59627a', ticker: '#ff8a3d', clock: '#2a2f3a' };
+
+function newLayout(tplKey, name) {
+  const L = { id: uuid(), name: name || TPL[tplKey].name, bg: '#000000', zones: TPL[tplKey].z() };
+  state.layouts.push(L); state.currentId = L.id; selId = null; save(); return L;
+}
+const cur = () => state.layouts.find(l => l.id === state.currentId) || state.layouts[0];
+const selZone = () => cur().zones.find(z => z.id === selId);
+
+/* ---------- editor stage ---------- */
+const stage = $('#stage'), wrap = $('#stageWrap');
+let scale = 1, selId = null, editorTimers = [];
+function fitStage() {
+  scale = wrap.clientWidth / W;
+  stage.style.transform = `scale(${scale})`;
+  wrap.style.height = H * scale + 'px';
+  stage.style.setProperty('--u', (1 / scale) + 'px');
+}
+new ResizeObserver(() => { fitStage(); }).observe(wrap);
+
+function renderStage() {
+  editorTimers.forEach(clearTimeout); editorTimers = [];
+  stage.innerHTML = '';
+  const L = cur(); stage.style.background = L.bg;
+  L.zones.forEach(z => {
+    const e = el('div', 'zone' + (z.id === selId ? ' sel' : '')); e.dataset.id = z.id; place(e, z);
+    const c = el('div', 'zc'); e.append(c); stage.append(e);
+    buildContent(c, z, false, editorTimers);
+    e.append(el('div', 'ztag', z.name + (z.lock ? ' · 16:9' : '')));
+    if (z.id === selId) ['nw', 'ne', 'sw', 'se'].forEach(h => { const d = el('div', 'h h-' + h); d.dataset.h = h; e.append(d); });
+  });
+}
+
+let drag = null;
+stage.addEventListener('pointerdown', ev => {
+  const ze = ev.target.closest('.zone');
+  if (!ze) { if (selId) { selId = null; renderStage(); renderInspector(); } return; }
+  ev.preventDefault();
+  const id = ze.dataset.id, handle = ev.target.dataset.h || null;
+  if (selId !== id) { selId = id; renderStage(); renderInspector(); }
+  const z = selZone();
+  drag = { id, handle, sx: ev.clientX, sy: ev.clientY, o: { x: z.x, y: z.y, w: z.w, h: z.h }, moved: false };
+  try { stage.setPointerCapture(ev.pointerId); } catch (e) {}
+});
+stage.addEventListener('pointermove', ev => {
+  if (!drag) return;
+  const z = selZone(); if (!z) return;
+  const dx = (ev.clientX - drag.sx) / scale / W * 100, dy = (ev.clientY - drag.sy) / scale / H * 100;
+  if (Math.abs(dx) + Math.abs(dy) > .2) drag.moved = true;
+  const others = cur().zones.filter(o => o.id !== z.id);
+  const cx = [0, 100].concat(...others.map(o => [o.x, o.x + o.w]));
+  const cy = [0, 100].concat(...others.map(o => [o.y, o.y + o.h]));
+  const near = (v, cs) => { for (const c of cs) if (Math.abs(v - c) < 1.2) return c; return null; };
+  const snap = (v, cs) => { const n = near(v, cs); return n != null ? n : Math.round(v * 2) / 2; };
+  const o = drag.o, MIN = 3;
+  if (!drag.handle) {
+    let nx = o.x + dx, ny = o.y + dy;
+    const sl = near(nx, cx), sr = near(nx + o.w, cx); nx = sl != null ? sl : sr != null ? sr - o.w : Math.round(nx * 2) / 2;
+    const st = near(ny, cy), sb = near(ny + o.h, cy); ny = st != null ? st : sb != null ? sb - o.h : Math.round(ny * 2) / 2;
+    z.x = Math.min(Math.max(0, nx), 100 - o.w); z.y = Math.min(Math.max(0, ny), 100 - o.h);
+  } else {
+    let x1 = o.x, y1 = o.y, x2 = o.x + o.w, y2 = o.y + o.h; const h = drag.handle;
+    if (h.includes('w')) x1 = Math.min(Math.max(0, snap(o.x + dx, cx)), x2 - MIN);
+    if (h.includes('e')) x2 = Math.max(Math.min(100, snap(o.x + o.w + dx, cx)), x1 + MIN);
+    if (h.includes('n')) y1 = Math.min(Math.max(0, snap(o.y + dy, cy)), y2 - MIN);
+    if (h.includes('s')) y2 = Math.max(Math.min(100, snap(o.y + o.h + dy, cy)), y1 + MIN);
+    if (z.lock) {
+      let s = (h.includes('w') || h.includes('e')) ? x2 - x1 : y2 - y1;
+      if (h.includes('n')) s = Math.min(s, y2); else s = Math.min(s, 100 - y1);
+      if (h.includes('w')) s = Math.min(s, x2); else s = Math.min(s, 100 - x1);
+      s = Math.max(s, MIN);
+      if (h.includes('n')) y1 = y2 - s; else y2 = y1 + s;
+      if (h.includes('w')) x1 = x2 - s; else x2 = x1 + s;
+    }
+    z.x = x1; z.y = y1; z.w = +(x2 - x1).toFixed(2); z.h = +(y2 - y1).toFixed(2);
+  }
+  const e = stage.querySelector(`.zone[data-id="${z.id}"]`); if (e) place(e, z);
+});
+const endDrag = () => {
+  if (!drag) return;
+  const moved = drag.moved; drag = null;
+  if (moved) { save(); renderStage(); renderInspector(); }
+};
+stage.addEventListener('pointerup', endDrag);
+stage.addEventListener('pointercancel', endDrag);
+
+/* drop files onto a media zone */
+wrap.addEventListener('dragover', e => e.preventDefault());
+wrap.addEventListener('drop', e => {
+  e.preventDefault();
+  const t = document.elementFromPoint(e.clientX, e.clientY); const ze = t && t.closest('.zone');
+  let z = ze ? cur().zones.find(q => q.id === ze.dataset.id) : null;
+  if (!z || z.type !== 'media') { toast('Drop files onto a media zone'); return; }
+  selId = z.id; addFiles(z, e.dataTransfer.files);
+});
+
+async function addFiles(z, files) {
+  const list = [...files]; let n = 0;
+  for (const f of list) {
+    const kind = f.type.startsWith('video') ? 'video' : f.type.startsWith('image') ? 'image' : null;
+    if (!kind) { toast(f.name + ' is not an image or video'); continue; }
+    if (f.size > 50 * 1024 * 1024) { toast(f.name + ' is over 50 MB (free plan limit)'); continue; }
+    toast('Uploading ' + f.name + '…'); setStatus('Uploading…');
+    const path = uuid() + '-' + f.name.replace(/[^\w.-]+/g, '_');
+    const { error } = await sb.storage.from('media').upload(path, f, { contentType: f.type, cacheControl: '31536000' });
+    if (error) { toast('Upload failed: ' + error.message); setStatus('Upload failed'); continue; }
+    const url = sb.storage.from('media').getPublicUrl(path).data.publicUrl;
+    z.items.push({ url, path, kind, name: f.name, duration: 8 }); n++;
+    save(); renderStage(); renderInspector();
+  }
+  if (n) toast(n + ' file' + (n > 1 ? 's' : '') + ' uploaded');
+}
+
+/* ---------- inspector ---------- */
+const insp = $('#insp');
+function fld(label, input) { const d = el('div', 'field'); d.append(el('label', null, label), input); return d; }
+function inp(type, val, on, attrs) { const i = el(type === 'textarea' ? 'textarea' : 'input'); if (type !== 'textarea') i.type = type; i.value = val; Object.assign(i, attrs || {}); i.addEventListener('input', () => on(i)); return i; }
+function sel(opts, val, on) { const s = el('select'); opts.forEach(([v, t]) => { const o = el('option', null, t); o.value = v; s.append(o); }); s.value = val; s.addEventListener('change', () => on(s.value)); return s; }
+function seg(opts, val, on) { const d = el('div', 'seg'); opts.forEach(([v, t]) => { const b = el('button', v === val ? 'on' : '', t); b.onclick = () => { on(v); [...d.children].forEach(x => x.classList.toggle('on', x === b)); }; d.append(b); }); return d; }
+const upd = (fn, full) => { fn(); save(); renderStage(); if (full) renderInspector(); };
+
+function renderInspector() {
+  insp.innerHTML = '';
+  const L = cur(), z = selZone();
+  if (!z) {
+    insp.append(el('h3', null, 'Layout'));
+    insp.append(fld('Name', inp('text', L.name, i => { L.name = i.value; save(); renderLayoutSel(); })));
+    insp.append(fld('Background', inp('color', L.bg, i => upd(() => L.bg = i.value))));
+    insp.append(el('h3', null, 'Zones (back to front)'));
+    const list = el('div', 'items');
+    L.zones.forEach(q => { const b = el('button', null, q.name + ' · ' + q.type); b.style.textAlign = 'left'; b.onclick = () => { selId = q.id; renderStage(); renderInspector(); }; list.append(b); });
+    insp.append(list);
+    insp.append(el('div', 'note', 'Tap a zone on the canvas to edit it. Use Play to preview the layout full-screen, as a TV would show it.'));
+    return;
+  }
+  insp.append(el('h3', null, 'Zone'));
+  insp.append(fld('Name', inp('text', z.name, i => { z.name = i.value; save(); const t = stage.querySelector(`.zone[data-id="${z.id}"] .ztag`); if (t) t.textContent = z.name + (z.lock ? ' · 16:9' : ''); })));
+  insp.append(fld('Type', sel([['media', 'Media (images / video)'], ['text', 'Text'], ['ticker', 'Scrolling ticker'], ['clock', 'Clock']], z.type, v => {
+    upd(() => { const keep = { id: z.id, x: z.x, y: z.y, w: z.w, h: z.h, name: z.name }; Object.keys(z).forEach(k => delete z[k]); Object.assign(z, zone(v, 0, 0, 0, 0), keep); if (z.type !== 'media') delete z.lock; }, true);
+  })));
+  const pos = el('div', 'row4');
+  [['x', 'X %'], ['y', 'Y %'], ['w', 'W %'], ['h', 'H %']].forEach(([k, t]) => {
+    const d = el('div'); d.append(el('label', null, t), inp('number', z[k], i => { const v = parseFloat(i.value); if (!isNaN(v)) upd(() => { z[k] = Math.max(0, Math.min(100, v)); if (z.lock && (k === 'w' || k === 'h')) { z.w = z.h = z[k]; } enforceLock(z); }, z.lock && (k === 'w' || k === 'h')); }, { step: 0.5 })); pos.append(d);
+  });
+  insp.append(pos);
+  insp.append(fld('Background', inp('color', z.bg, i => upd(() => z.bg = i.value))));
+  insp.append(el('hr'));
+
+  if (z.type === 'media') {
+    insp.append(el('h3', null, 'Playlist'));
+    const list = el('div', 'items');
+    z.items.forEach((it, idx) => {
+      const r = el('div', 'item');
+      const th = el('div', 'th', it.kind === 'video' ? 'VIDEO' : '');
+      if (it.kind === 'image' && it.url) th.style.backgroundImage = `url("${encodeURI(it.url)}")`;
+      if (!it.url) th.textContent = 'MISSING';
+      const nm = el('div', 'nm', it.name);
+      const ctl = el('div', 'ctl');
+      if (it.kind === 'image') { const d = inp('number', it.duration, i => { it.duration = Math.max(1, +i.value || 8); save(); }, { min: 1, title: 'Seconds on screen' }); ctl.append(d, el('span', null, 's')); }
+      const up = el('button', null, '↑'); up.disabled = idx === 0; up.onclick = () => upd(() => { z.items.splice(idx - 1, 0, z.items.splice(idx, 1)[0]); }, true);
+      const rm = el('button', 'danger', '✕'); rm.onclick = () => upd(() => z.items.splice(idx, 1), true);
+      ctl.append(up, rm); r.append(th, nm, ctl); list.append(r);
+    });
+    if (!z.items.length) list.append(el('div', 'note', 'No media yet. Images show for the seconds you set; videos play to the end.'));
+    insp.append(list);
+    const fl = el('label', 'file', '＋ Add images or videos'); const fi = el('input'); fi.type = 'file'; fi.multiple = true; fi.accept = 'image/*,video/*';
+    fi.onchange = () => { addFiles(z, fi.files); }; fl.append(fi); insp.append(fl);
+    insp.append(fld('Fit', seg([['cover', 'Fill (crop)'], ['contain', 'Fit (no crop)']], z.fit, v => upd(() => z.fit = v))));
+    insp.append(fld('Shape', seg([['1', 'Locked 16:9'], ['0', 'Free']], z.lock ? '1' : '0', v => upd(() => { z.lock = v === '1'; enforceLock(z); }, true))));
+  }
+  if (z.type === 'text' || z.type === 'ticker') {
+    insp.append(fld(z.type === 'ticker' ? 'Ticker text' : 'Text', inp('textarea', z.text, i => upd(() => z.text = i.value))));
+    const r = el('div', 'row');
+    r.append(fld('Size (px)', inp('number', z.fontSize, i => upd(() => z.fontSize = Math.max(8, +i.value || 40)), { min: 8 })));
+    r.append(fld('Color', inp('color', z.color, i => upd(() => z.color = i.value))));
+    insp.append(r);
+    insp.append(fld('Weight', seg([['400', 'Regular'], ['500', 'Medium'], ['700', 'Bold'], ['800', 'Heavy']], String(z.weight), v => upd(() => z.weight = +v))));
+  }
+  if (z.type === 'text') {
+    insp.append(fld('Align', seg([['left', 'Left'], ['center', 'Center'], ['right', 'Right']], z.align, v => upd(() => z.align = v))));
+    insp.append(fld('Vertical', seg([['top', 'Top'], ['center', 'Middle'], ['bottom', 'Bottom']], z.valign, v => upd(() => z.valign = v))));
+  }
+  if (z.type === 'ticker') {
+    insp.append(fld('Speed (px per second)', inp('range', z.speed, i => upd(() => z.speed = +i.value), { min: 40, max: 500, step: 10 })));
+  }
+  if (z.type === 'clock') {
+    const r = el('div', 'row');
+    r.append(fld('Size (px)', inp('number', z.fontSize, i => upd(() => z.fontSize = Math.max(16, +i.value || 100)), { min: 16 })));
+    r.append(fld('Color', inp('color', z.color, i => upd(() => z.color = i.value))));
+    insp.append(r);
+    insp.append(fld('Format', seg([['12', '12-hour'], ['24', '24-hour']], z.format, v => upd(() => z.format = v))));
+    insp.append(fld('Date', seg([['1', 'Show'], ['0', 'Hide']], z.showDate ? '1' : '0', v => upd(() => z.showDate = v === '1'))));
+  }
+  insp.append(el('hr'));
+  const b = el('div', 'btns');
+  const zs = L.zones, idx = zs.indexOf(z);
+  const fwd = el('button', null, 'Bring forward'); fwd.disabled = idx === zs.length - 1; fwd.onclick = () => upd(() => zs.splice(idx + 1, 0, zs.splice(idx, 1)[0]), true);
+  const bck = el('button', null, 'Send back'); bck.disabled = idx === 0; bck.onclick = () => upd(() => zs.splice(idx - 1, 0, zs.splice(idx, 1)[0]), true);
+  const dup = el('button', null, 'Duplicate'); dup.onclick = () => upd(() => { const c = JSON.parse(JSON.stringify(z)); c.id = uid(); c.name = z.name + ' copy'; c.x = Math.min(c.x + 3, 100 - c.w); c.y = Math.min(c.y + 3, 100 - c.h); zs.push(c); selId = c.id; }, true);
+  const del = el('button', 'danger', 'Delete zone'); del.onclick = () => upd(() => { zs.splice(idx, 1); selId = null; }, true);
+  b.append(fwd, bck, dup, del); insp.append(b);
+}
+
+/* ---------- layouts, templates, header ---------- */
+function renderLayoutSel() {
+  const s = $('#layoutSel'); s.innerHTML = '';
+  state.layouts.forEach(L => { const o = el('option', null, L.name); o.value = L.id; s.append(o); });
+  s.value = cur().id;
+}
+$('#layoutSel').onchange = e => { state.currentId = e.target.value; selId = null; try { localStorage.setItem('signage.current', state.currentId); } catch (x) {} renderAll(); };
+$('#dupLayout').onclick = () => { const c = JSON.parse(JSON.stringify(cur())); c.id = uuid(); c.name += ' copy'; c.zones.forEach(z => z.id = uid()); state.layouts.push(c); state.currentId = c.id; selId = null; save(); renderAll(); toast('Layout duplicated'); };
+let delArm = null;
+$('#delLayout').onclick = e => {
+  const b = e.currentTarget;
+  if (state.layouts.length < 2) { toast('Keep at least one layout'); return; }
+  if (!delArm) { b.textContent = 'Tap again to delete'; delArm = setTimeout(() => { delArm = null; b.textContent = 'Delete'; }, 3000); return; }
+  clearTimeout(delArm); delArm = null; b.textContent = 'Delete';
+  const gone = state.currentId; pending.delete(gone);
+  sb.from('layouts').delete().eq('id', gone).then(({ error }) => { if (error) toast('Delete failed: ' + error.message); });
+  state.layouts = state.layouts.filter(l => l.id !== gone); state.currentId = state.layouts[0].id; selId = null; renderAll();
+  try { localStorage.setItem('signage.current', state.currentId); } catch (e) {}
+};
+function renderTemplates() {
+  const t = $('#tpls');
+  Object.entries(TPL).forEach(([k, v]) => {
+    const b = el('button', 'tpl'); const mini = el('div', 'mini');
+    v.z().forEach(z => { const i = el('i'); place(i, z); i.style.background = TYPE_COL[z.type]; mini.append(i); });
+    b.append(mini, el('small', null, v.name));
+    b.onclick = () => { newLayout(k); renderAll(); toast('New layout: ' + v.name); };
+    t.append(b);
+  });
+}
+document.querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
+  const L = cur(); const n = L.zones.length % 5;
+  const z = zone(b.dataset.add, 25 + n * 3, 25 + n * 3, 40, b.dataset.add === 'ticker' ? 12 : 30);
+  L.zones.push(z); selId = z.id; save(); renderAll();
+});
+$('#exportBtn').onclick = () => { $('#mText').value = JSON.stringify(cur(), null, 2); $('#modal').hidden = false; };
+$('#mClose').onclick = () => $('#modal').hidden = true;
+$('#mCopy').onclick = async () => { try { await navigator.clipboard.writeText($('#mText').value); toast('Copied'); } catch (e) { $('#mText').select(); toast('Select all and copy'); } };
+
+document.addEventListener('keydown', e => {
+  if (!$('#player').hidden) { if (e.key === 'Escape') stopPlay(); return; }
+  if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+  const z = selZone(); if (!z) return;
+  if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); upd(() => { cur().zones.splice(cur().zones.indexOf(z), 1); selId = null; }, true); }
+  const st = e.shiftKey ? 5 : 0.5, mv = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, -st], ArrowDown: [0, st] }[e.key];
+  if (mv) { e.preventDefault(); upd(() => { z.x = Math.min(Math.max(0, z.x + mv[0]), 100 - z.w); z.y = Math.min(Math.max(0, z.y + mv[1]), 100 - z.h); }, true); }
+});
+
+/* ---------- player ---------- */
+let playSession = 0, playerTimers = [], uiTimer = null;
+const player = $('#player'), pstage = $('#pstage');
+function fitPlayer() { const s = Math.min(innerWidth / W, innerHeight / H); pstage.style.transform = `translate(-50%,-50%) scale(${s})`; }
+function startPlay() {
+  const L = cur(); playSession++; const sess = playSession;
+  playerTimers = []; pstage.innerHTML = ''; pstage.style.background = L.bg;
+  player.hidden = false; fitPlayer();
+  L.zones.forEach(z => { const e = el('div', 'zone'); place(e, z); const c = el('div', 'zc'); e.style.cursor = 'inherit'; e.append(c); pstage.append(e); buildContent(c, z, true, playerTimers, () => sess === playSession); });
+  try { const p = player.requestFullscreen && player.requestFullscreen(); if (p && p.catch) p.catch(() => {}); } catch (e) {}
+  showUI();
+}
+function stopPlay() {
+  playSession++; playerTimers.forEach(clearTimeout); playerTimers = [];
+  pstage.querySelectorAll('video').forEach(v => v.pause()); pstage.innerHTML = ''; player.hidden = true;
+  try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch (e) {}
+}
+function showUI() { player.classList.add('show-ui'); clearTimeout(uiTimer); uiTimer = setTimeout(() => player.classList.remove('show-ui'), 2500); }
+player.addEventListener('pointermove', showUI); player.addEventListener('pointerdown', showUI);
+$('#playBtn').onclick = startPlay; $('#exitBtn').onclick = stopPlay;
+addEventListener('resize', () => { if (!player.hidden) fitPlayer(); });
+
+/* ---------- misc ---------- */
+let toastT = null;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 1800); }
+function renderAll() { renderLayoutSel(); fitStage(); renderStage(); renderInspector(); }
+
+/* ---------- screens ---------- */
+async function renderScreens() {
+  const list = $('#sList'); list.innerHTML = '';
+  const { data, error } = await sb.from('screens').select('*').eq('paired', true).order('created_at');
+  if (error) { list.append(el('div', 'note', 'Could not load screens: ' + error.message)); return; }
+  if (!data.length) list.append(el('div', 'note', 'No screens yet. Open player.html on the Fire Stick, then enter the code it shows above.'));
+  data.forEach(s => {
+    const row = el('div', 'scr');
+    const online = s.last_seen && (Date.now() - new Date(s.last_seen).getTime()) < 60000;
+    row.append(el('span', 'dot' + (online ? ' on' : '')));
+    const nm = el('div'); const ni = el('input'); ni.value = s.name || ''; ni.placeholder = 'Name';
+    ni.onchange = async () => { const { error } = await sb.from('screens').update({ name: ni.value }).eq('id', s.id); toast(error ? error.message : 'Renamed'); };
+    nm.append(ni, el('small', null, (online ? 'Online' : 'Offline') + (s.last_seen ? ' · last seen ' + new Date(s.last_seen).toLocaleString() : '')));
+    const ls = el('select'); const none = el('option', null, '— No layout —'); none.value = ''; ls.append(none);
+    state.layouts.forEach(L => { const o = el('option', null, L.name); o.value = L.id; ls.append(o); });
+    ls.value = s.layout_id || '';
+    ls.onchange = async () => { const { error } = await sb.from('screens').update({ layout_id: ls.value || null }).eq('id', s.id); toast(error ? error.message : 'Layout sent to ' + (s.name || 'screen')); };
+    const rm = el('button', 'danger', 'Unpair'); let arm = false;
+    rm.onclick = async () => {
+      if (!arm) { arm = true; rm.textContent = 'Tap again'; setTimeout(() => { arm = false; rm.textContent = 'Unpair'; }, 3000); return; }
+      const { error } = await sb.from('screens').delete().eq('id', s.id); toast(error ? error.message : 'Unpaired'); renderScreens();
+    };
+    row.append(nm, ls, rm); list.append(row);
+  });
+}
+$('#screensBtn').onclick = () => { $('#screens').hidden = false; renderScreens(); };
+$('#sClose').onclick = () => { $('#screens').hidden = true; };
+$('#pairForm').onsubmit = async e => {
+  e.preventDefault();
+  const code = $('#pCode').value.replace(/\D/g, '');
+  if (code.length !== 8) { toast('The code has 8 digits'); return; }
+  const { data, error } = await sb.from('screens').update({ paired: true, name: $('#pName').value || 'Screen', layout_id: cur() ? cur().id : null }).eq('pair_code', code).select();
+  if (error) { toast(error.message); return; }
+  if (!data.length) { toast('No screen is showing that code'); return; }
+  $('#pCode').value = ''; $('#pName').value = '';
+  toast('Paired. It will show "' + cur().name + '" shortly'); renderScreens();
+};
+
+/* ---------- sign in ---------- */
+$('#loginForm').onsubmit = async e => {
+  e.preventDefault(); $('#lErr').textContent = '';
+  const { error } = await sb.auth.signInWithPassword({ email: $('#lEmail').value.trim(), password: $('#lPass').value });
+  if (error) { $('#lErr').textContent = error.message; return; }
+  $('#login').hidden = true; start();
+};
+$('#signOut').onclick = async () => { await sb.auth.signOut(); location.reload(); };
+
+let started = false;
+async function start() {
+  if (started) return; started = true;
+  await loadLayouts();
+  if (!state.layouts.length) { newLayout('lshape', 'Storefront'); save(); }
+  renderTemplates(); renderAll(); setStatus('Saved');
+}
+(async function init() {
+  const { data } = await sb.auth.getSession();
+  if (data.session) start(); else $('#login').hidden = false;
+})();
+</script>
+</body>
+</html>

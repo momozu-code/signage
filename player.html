@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Signage Player</title>
+<style>
+html,body{margin:0;height:100%;background:#000;color:#fff;overflow:hidden;font-family:Inter,Roboto,system-ui,sans-serif;cursor:none}
+#stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform-origin:50% 50%;overflow:hidden}
+.zone{position:absolute}
+.zc{position:absolute;inset:0;overflow:hidden}
+.m{position:absolute;inset:0;width:100%;height:100%;transition:opacity .6s ease}
+.tick{will-change:transform}
+#pair{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;background:radial-gradient(circle at 50% 40%,#1d2230,#07080b 70%);text-align:center;padding:40px}
+#pair h1{margin:0;font-size:44px;font-weight:700}
+#pair .code{font-size:150px;font-weight:800;letter-spacing:.12em;color:#ff8a3d;font-variant-numeric:tabular-nums;line-height:1}
+#pair p{margin:0;font-size:30px;color:#9aa1b2;max-width:1200px}
+#status{position:absolute;right:20px;bottom:16px;font-size:16px;color:#556;opacity:.8}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div id="stage" hidden></div>
+<div id="pair" hidden>
+  <h1>Pair this screen</h1>
+  <div class="code" id="code">········</div>
+  <p id="pairMsg">In your Signage dashboard, open <b>Screens</b> and enter this code.</p>
+</div>
+<div id="status"></div>
+
+<script src="supabase.js"></script>
+<script src="config.js"></script>
+<script src="render.js"></script>
+<script>
+const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: false } });
+const stage = document.getElementById('stage'), pair = document.getElementById('pair');
+const POLL_MS = 15000;
+
+function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
+function newId() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); });
+}
+let device = store('signage.device');
+if (!device) { device = newId(); store('signage.device', device); }
+
+let shownKey = null, timers = [], session = 0;
+function fit() { const s = Math.min(innerWidth / SIGN_W, innerHeight / SIGN_H); stage.style.transform = `translate(-50%,-50%) scale(${s})`; }
+addEventListener('resize', fit);
+
+function clearStage() {
+  session++; timers.forEach(clearTimeout); timers = [];
+  stage.querySelectorAll('video').forEach(v => v.pause());
+  stage.innerHTML = '';
+}
+function showLayout(L) {
+  const key = JSON.stringify(L);
+  if (key === shownKey) return;
+  shownKey = key; clearStage();
+  const mine = session;
+  pair.hidden = true; stage.hidden = false;
+  stage.style.background = L.bg || '#000'; fit();
+  (L.zones || []).forEach(z => {
+    const e = el('div', 'zone'); place(e, z);
+    const c = el('div', 'zc'); e.append(c); stage.append(e);
+    buildContent(c, z, true, timers, () => mine === session);
+  });
+}
+function showPair(code, msg) {
+  if (shownKey !== null) { clearStage(); shownKey = null; }
+  stage.hidden = true; pair.hidden = false;
+  document.getElementById('code').textContent = code || '········';
+  if (msg) document.getElementById('pairMsg').textContent = msg;
+}
+function status(t) { document.getElementById('status').textContent = t; }
+
+async function poll() {
+  try {
+    let { data, error } = await sb.rpc('screen_config', { p_device: device });
+    if (error) throw error;
+    if (!data) {
+      const r = await sb.rpc('register_screen', { p_device: device });
+      if (r.error) throw r.error;
+      data = { paired: false, pair_code: r.data, layout: null };
+    }
+    status('');
+    if (data.paired && data.layout) {
+      store('signage.lastLayout', JSON.stringify(data.layout));
+      showLayout(data.layout);
+    } else if (data.paired) {
+      showPair(data.pair_code, (data.name || 'This screen') + ' is paired. Choose a layout for it in the dashboard.');
+    } else {
+      showPair(data.pair_code, 'In your Signage dashboard, open Screens and enter this code.');
+    }
+  } catch (e) {
+    // Offline or server problem: keep showing whatever is on screen, or the last layout we saved.
+    status('Offline · retrying');
+    if (shownKey === null) {
+      const last = store('signage.lastLayout');
+      if (last) { try { showLayout(JSON.parse(last)); } catch (x) {} }
+      else showPair(null, 'Waiting for internet connection…');
+    }
+  }
+}
+
+// Keep the TV awake where the browser allows it (the Fire Stick app also does this natively).
+async function wake() { try { if (navigator.wakeLock) await navigator.wakeLock.request('screen'); } catch (e) {} }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
+
+const last = store('signage.lastLayout');
+if (last) { try { showLayout(JSON.parse(last)); } catch (e) {} }
+wake(); poll(); setInterval(poll, POLL_MS);
+</script>
+</body>
+</html>
