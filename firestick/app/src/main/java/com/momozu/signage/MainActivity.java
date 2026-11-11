@@ -23,6 +23,7 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Toast;
 
 /**
  * Full-screen web player for the signage page.
@@ -72,7 +73,7 @@ public class MainActivity extends Activity {
             @SuppressWarnings("deprecation")
             @Override
             public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
-                if (failingUrl != null && failingUrl.equals(BuildConfig.PLAYER_URL)) scheduleRetry();
+                if (failingUrl != null && failingUrl.startsWith(BuildConfig.PLAYER_URL)) scheduleRetry();
             }
 
             @TargetApi(Build.VERSION_CODES.M)
@@ -89,11 +90,18 @@ public class MainActivity extends Activity {
 
     private void load() {
         handler.removeCallbacks(retry);
-        // Offline: use the copy saved from the last visit so the screen keeps playing.
-        web.getSettings().setCacheMode(isOnline()
-                ? WebSettings.LOAD_DEFAULT
-                : WebSettings.LOAD_CACHE_ELSE_NETWORK);
-        web.loadUrl(BuildConfig.PLAYER_URL);
+        SharedPreferences prefs = getSharedPreferences("signage", MODE_PRIVATE);
+        if (isOnline()) {
+            // Online: add a timestamp so the newest player page is always fetched (images and videos stay cached).
+            String url = BuildConfig.PLAYER_URL + "?t=" + System.currentTimeMillis();
+            prefs.edit().putString("lastUrl", url).apply();
+            web.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
+            web.loadUrl(url);
+        } else {
+            // Offline: reopen the copy saved from the last visit so the screen keeps playing.
+            web.getSettings().setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+            web.loadUrl(prefs.getString("lastUrl", BuildConfig.PLAYER_URL));
+        }
     }
 
     private void scheduleRetry() {
@@ -116,6 +124,7 @@ public class MainActivity extends Activity {
     private void askForAutoStartPermissionOnce() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return;
         if (Settings.canDrawOverlays(this)) return;
+        Toast.makeText(this, "To open on start-up, allow \"Display over other apps\" for ibexMECS", Toast.LENGTH_LONG).show();
         SharedPreferences prefs = getSharedPreferences("signage", MODE_PRIVATE);
         if (prefs.getBoolean("askedOverlay", false)) return;
         prefs.edit().putBoolean("askedOverlay", true).apply();

@@ -328,9 +328,9 @@ header select{width:auto;min-width:150px}
   <div id="lErr" style="color:var(--danger);font-size:12px;margin-top:10px"></div>
 </form></div>
 
-<script src="supabase.js"></script>
-<script src="config.js"></script>
-<script src="render.js"></script>
+<script src="supabase.js?v=5"></script>
+<script src="config.js?v=5"></script>
+<script src="render.js?v=5"></script>
 <script>
 /* ================= basics ================= */
 const W = SIGN_W, H = SIGN_H;
@@ -374,7 +374,7 @@ addEventListener('beforeunload', e => { if (Object.keys(saveQ).length) { e.preve
 
 /* ================= session, roles, data ================= */
 let me = null, isAdmin = false, mySites = [];
-const D = { sites: [], layouts: [], folders: [], content: [], playlists: [], screens: [], profiles: [], userSites: [] };
+const D = { sites: [], layouts: [], folders: [], content: [], playlists: [], screens: [], profiles: [], userSites: [], fonts: [] };
 let curSite = 'all';
 
 async function loadAll() {
@@ -384,14 +384,16 @@ async function loadAll() {
     sb.from('folders').select('*').order('name'),
     sb.from('content').select('*').order('created_at', { ascending: false }),
     sb.from('playlists').select('*').order('name'),
-    sb.from('screens').select('*').eq('paired', true).order('created_at')
+    sb.from('screens').select('*').eq('paired', true).order('created_at'),
+    sb.from('fonts').select('*').order('name')
   ];
   if (isAdmin) qs.push(sb.from('profiles').select('*').order('email'), sb.from('user_sites').select('*'));
   const r = await Promise.all(qs);
   const bad = r.find(x => x.error); if (bad) toast('Could not load: ' + bad.error.message);
   [D.sites, D.layouts, D.folders, D.content, D.playlists, D.screens] = r.slice(0, 6).map(x => x.data || []);
   D.layouts = D.layouts.map(row => ({ id: row.id, name: row.name, bg: (row.data && row.data.bg) || '#000000', zones: (row.data && row.data.zones) || [], updated_at: row.updated_at }));
-  if (isAdmin) { D.profiles = r[6].data || []; D.userSites = r[7].data || []; }
+  D.fonts = r[6].data || [];
+  if (isAdmin) { D.profiles = r[7].data || []; D.userSites = r[8].data || []; }
 }
 
 const siteName = id => { const s = D.sites.find(x => x.id === id); return s ? s.name : (id ? 'Other site' : 'Shared'); };
@@ -479,6 +481,7 @@ function zone(type, x, y, w, h, extra) {
 }
 function enforceLock(z) { if (!z.lock) return; const s = Math.min(z.w, z.h, 100 - z.x, 100 - z.y); z.w = z.h = +s.toFixed(2); }
 const TPL = {
+  base:    { name: 'Base grid (clean px)', z: () => [zone('media', 0, 0, 83.333, 83.333, { name: 'Main' }), zone('clock', 83.333, 0, 16.667, 16.667, { fontSize: 60 }), zone('media', 83.333, 16.667, 16.667, 66.667, { name: 'Side Graphic' }), zone('media', 0, 83.333, 25, 16.667, { name: 'Logo', fit: 'contain' }), zone('ticker', 25, 83.333, 75, 16.667)] },
   full:    { name: 'Full screen', z: () => [zone('media', 0, 0, 100, 100, { name: 'Main' })] },
   ticker:  { name: 'Main + ticker', z: () => [zone('media', 0, 0, 85, 85, { name: 'Main' }), zone('clock', 85, 0, 15, 85, { fontSize: 56, showDate: false }), zone('ticker', 0, 85, 100, 15)] },
   lshape:  { name: 'L-shape', z: () => [zone('media', 0, 0, 82, 82, { name: 'Main' }), zone('clock', 82, 0, 18, 32, { fontSize: 64 }), zone('media', 82, 32, 18, 50, { name: 'Side' }), zone('ticker', 0, 82, 100, 18)] },
@@ -652,7 +655,12 @@ function renderInspector() {
   [['x', 'X %'], ['y', 'Y %'], ['w', 'W %'], ['h', 'H %']].forEach(([k, t]) => {
     const d = el('div'); d.append(el('label', null, t), inp('number', z[k], i => { const v = parseFloat(i.value); if (!isNaN(v)) upd(() => { z[k] = Math.max(0, Math.min(100, v)); if (z.lock && (k === 'w' || k === 'h')) z.w = z.h = z[k]; enforceLock(z); }, z.lock && (k === 'w' || k === 'h')); }, { step: 0.5 })); pos.append(d);
   });
-  insp.append(pos, fld('Background', inp('color', z.bg, i => upd(() => z.bg = i.value))), el('hr'));
+  const px = el('div', 'muted'); px.style.margin = '-4px 0 10px';
+  const pw = Math.round(z.w / 100 * W), ph = Math.round(z.h / 100 * H);
+  const g = (a, b) => b ? g(b, a % b) : a, k = g(pw, ph) || 1;
+  const ratio = (pw / k <= 32 && ph / k <= 32) ? (pw / k) + ':' + (ph / k) : (pw >= ph ? (pw / ph).toFixed(2) + ':1' : '1:' + (ph / pw).toFixed(2));
+  px.textContent = 'Artwork size: ' + pw + ' × ' + ph + ' px (' + ratio + '). For extra-sharp 4K: ' + pw * 2 + ' × ' + ph * 2 + '.';
+  insp.append(pos, px, fld('Background', inp('color', z.bg, i => upd(() => z.bg = i.value))), el('hr'));
 
   if (z.type === 'media' || z.type === 'ticker') {
     insp.append(fld('Default playlist', sel(plOpts(z.type), z.playlist_id || '', v => upd(() => z.playlist_id = v || null, true))));
@@ -667,6 +675,7 @@ function renderInspector() {
     insp.append(fld('Fit', seg([['cover', 'Fill (crop)'], ['contain', 'Fit (no crop)']], z.fit, v => upd(() => z.fit = v))));
     insp.append(fld('Shape', seg([['1', 'Locked 16:9'], ['0', 'Free']], z.lock ? '1' : '0', v => upd(() => { z.lock = v === '1'; enforceLock(z); }, true))));
   }
+  if (z.type === 'text' || z.type === 'ticker' || z.type === 'clock') insp.append(fontPicker(z));
   if (z.type === 'text' || z.type === 'ticker') {
     insp.append(fld(z.type === 'ticker' ? 'Text shown when there is no playlist' : 'Text', inp('textarea', z.text, i => upd(() => z.text = i.value))));
     const r = el('div', 'row');
@@ -681,7 +690,8 @@ function renderInspector() {
   if (z.type === 'clock') {
     const r = el('div', 'row');
     r.append(fld('Size (px)', inp('number', z.fontSize, i => upd(() => z.fontSize = Math.max(16, +i.value || 100)), { min: 16 })), fld('Colour', inp('color', z.color, i => upd(() => z.color = i.value))));
-    insp.append(r, fld('Format', seg([['12', '12-hour'], ['24', '24-hour']], z.format, v => upd(() => z.format = v))), fld('Date', seg([['1', 'Show'], ['0', 'Hide']], z.showDate ? '1' : '0', v => upd(() => z.showDate = v === '1'))));
+    insp.append(r, fld('Weight', seg([['400', 'Regular'], ['500', 'Medium'], ['700', 'Bold'], ['800', 'Heavy']], String(z.weight || 700), v => upd(() => z.weight = +v))),
+      fld('Format', seg([['12', '12-hour'], ['24', '24-hour']], z.format, v => upd(() => z.format = v))), fld('Date', seg([['1', 'Show'], ['0', 'Hide']], z.showDate ? '1' : '0', v => upd(() => z.showDate = v === '1'))));
   }
   insp.append(el('hr'));
   const b = el('div', 'btns'), zs = L.zones, idx = zs.indexOf(z);
@@ -690,6 +700,39 @@ function renderInspector() {
   const dup = el('button', 'sm', 'Duplicate'); dup.onclick = () => upd(() => { const c = JSON.parse(JSON.stringify(z)); c.id = uid(); c.name = z.name + ' copy'; c.x = Math.min(c.x + 3, 100 - c.w); c.y = Math.min(c.y + 3, 100 - c.h); zs.push(c); selId = c.id; }, true);
   const del = el('button', 'sm danger', 'Delete zone'); del.onclick = () => upd(() => { zs.splice(idx, 1); selId = null; }, true);
   b.append(fwd, bck, dup, del); insp.append(b);
+}
+function fontPicker(z) {
+  const wrapF = el('div', 'field');
+  wrapF.append(el('label', null, 'Font'));
+  const opts = [['', 'Default (Inter)']]
+    .concat(D.fonts.map(f => ['c:' + f.id, '★ ' + f.name + ' (uploaded)']))
+    .concat(Object.keys(SIGN_FONTS).map(n => ['g:' + n, n]));
+  const cur = z.fontUrl ? ('c:' + ((D.fonts.find(f => f.url === z.fontUrl) || {}).id || '')) : (z.font ? 'g:' + z.font : '');
+  const s1 = sel(opts, cur, v => upd(() => {
+    if (!v) { delete z.font; delete z.fontUrl; }
+    else if (v.startsWith('g:')) { z.font = v.slice(2); delete z.fontUrl; }
+    else { const f = D.fonts.find(x => x.id === v.slice(2)); if (f) { z.font = f.name; z.fontUrl = f.url; } }
+  }));
+  const up = el('label', 'file'); const ub = el('button', 'sm', '⬆ Upload a font file'); ub.type = 'button'; ub.tabIndex = -1;
+  const fi = el('input'); fi.type = 'file'; fi.accept = '.ttf,.otf,.woff,.woff2';
+  fi.onchange = async () => { const f = fi.files[0]; fi.value = ''; if (f) { const font = await uploadFont(f); if (font) upd(() => { z.font = font.name; z.fontUrl = font.url; }, true); } };
+  up.append(ub, fi); up.style.marginTop = '6px';
+  wrapF.append(s1, up, el('div', 'muted', 'Upload your brand font (.ttf, .otf, .woff or .woff2) to use it on every layout.'));
+  return wrapF;
+}
+async function uploadFont(f) {
+  if (!/\.(ttf|otf|woff2?)$/i.test(f.name)) { toast('Use a .ttf, .otf, .woff or .woff2 file'); return null; }
+  if (f.size > 10 * 1024 * 1024) { toast('That font file is over 10 MB'); return null; }
+  const name = f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').replace(/[^\w ]+/g, '').trim() || 'Custom font';
+  toast('Uploading font ' + name + '…');
+  const path = 'fonts/' + uuid() + '-' + f.name.replace(/[^\w.-]+/g, '_');
+  const up = await sb.storage.from('media').upload(path, f, { contentType: f.type || 'font/' + f.name.split('.').pop().toLowerCase(), cacheControl: '31536000' });
+  if (up.error) { toast('Upload failed: ' + up.error.message); return null; }
+  const row = { id: uuid(), name, url: sb.storage.from('media').getPublicUrl(path).data.publicUrl, path };
+  const ins = await sb.from('fonts').insert(row);
+  if (ins.error) { toast(ins.error.message); return null; }
+  D.fonts.push(row); D.fonts.sort((a, b) => a.name.localeCompare(b.name)); toast('Font "' + name + '" added');
+  return row;
 }
 async function legacyToPlaylist(z) {
   const rows = z.items.map(it => ({ id: uuid(), kind: it.kind, name: it.name || 'File', url: it.url, path: it.path || null, duration: it.duration || 8, site_id: null }));

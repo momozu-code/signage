@@ -4,6 +4,35 @@ window.SIGN_W = 1920; window.SIGN_H = 1080;
 window.SIGN_PX = window.SIGN_PX || function (n) { return n + 'px'; };
 function U(n) { return window.SIGN_PX(n); }
 
+// Fonts: a built-in Google Fonts list, or a font file uploaded to the dashboard (zone.fontUrl).
+window.SIGN_FONTS = {
+  'Inter': '400;500;700;800', 'Roboto': '400;500;700;900', 'Montserrat': '400;500;700;800', 'Poppins': '400;500;700;800',
+  'Open Sans': '400;500;700;800', 'Lato': '400;700;900', 'Nunito': '400;500;700;800', 'Raleway': '400;500;700;800',
+  'DM Sans': '400;500;700;800', 'Archivo': '400;500;700;800', 'Space Grotesk': '400;500;700', 'Source Sans 3': '400;500;700;800',
+  'Oswald': '400;500;700', 'Bebas Neue': '400', 'Anton': '400', 'Playfair Display': '400;500;700;800', 'Merriweather': '400;700;900',
+  'Roboto Mono': '400;500;700'
+};
+const _fontsLoaded = {};
+function ensureFont(name, url) {
+  if (!name || _fontsLoaded[name]) return;
+  _fontsLoaded[name] = 1;
+  if (url) {
+    const st = document.createElement('style');
+    st.textContent = '@font-face{font-family:"' + name.replace(/["\\]/g, '') + '";src:url("' + encodeURI(url) + '");font-display:swap}';
+    document.head.appendChild(st);
+  } else if (window.SIGN_FONTS[name]) {
+    const l = document.createElement('link'); l.rel = 'stylesheet';
+    l.href = 'https://fonts.googleapis.com/css2?family=' + name.replace(/ /g, '+') + ':wght@' + window.SIGN_FONTS[name] + '&display=swap';
+    document.head.appendChild(l);
+  }
+}
+function fontFamily(z) {
+  if (!z.font) return '';
+  ensureFont(z.font, z.fontUrl);
+  return '"' + z.font.replace(/["\\]/g, '') + '", Inter, Roboto, sans-serif';
+}
+function whenFontsReady(cb) { try { if (document.fonts && document.fonts.ready) document.fonts.ready.then(cb); } catch (e) {} }
+
 window.el = function (tag, cls, txt) {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -60,28 +89,35 @@ window.buildContent = function (c, z, live, timers, alive) {
     c.style.alignItems = { top: 'flex-start', center: 'center', bottom: 'flex-end' }[z.valign] || 'center';
     c.style.padding = U(48);
     const t = el('div', null, z.text);
-    Object.assign(t.style, { color: z.color, fontSize: U(z.fontSize), fontWeight: z.weight, textAlign: z.align, whiteSpace: 'pre-wrap', lineHeight: 1.2 });
+    Object.assign(t.style, { color: z.color, fontSize: U(z.fontSize), fontWeight: z.weight, textAlign: z.align, whiteSpace: 'pre-wrap', lineHeight: 1.2, fontFamily: fontFamily(z) });
     c.append(t); return;
   }
   if (z.type === 'ticker') {
     c.style.display = 'flex'; c.style.alignItems = 'center';
     const msgs = (z.items || []).map(i => i.text).filter(Boolean);
     const t = el('div', 'tick', (msgs.length ? msgs.join('     •     ') : (z.text || '')).replace(/\n/g, '  •  '));
-    Object.assign(t.style, { color: z.color, fontSize: U(z.fontSize), fontWeight: z.weight || 700, whiteSpace: 'nowrap', flexShrink: 0 });
+    Object.assign(t.style, { color: z.color, fontSize: U(z.fontSize), fontWeight: z.weight || 700, whiteSpace: 'nowrap', flexShrink: 0, fontFamily: fontFamily(z) });
     c.append(t);
-    requestAnimationFrame(() => {
+    let anim = null;
+    const run = () => {
       const bw = c.offsetWidth, tw = t.offsetWidth;
       if (!bw || !t.animate) return;
-      t.animate([{ transform: `translateX(${bw}px)` }, { transform: `translateX(${-tw}px)` }],
-        { duration: (bw + tw) / Math.max(20, +z.speed || 160) * 1000, iterations: Infinity });
-    });
+      if (anim) anim.cancel();
+      // speed is in design pixels per second; scale it to this screen
+      const pxPerSec = Math.max(20, +z.speed || 160) * (bw / (z.w / 100 * window.SIGN_W) || 1);
+      anim = t.animate([{ transform: 'translateX(' + bw + 'px)' }, { transform: 'translateX(' + (-tw) + 'px)' }],
+        { duration: (bw + tw) / pxPerSec * 1000, iterations: Infinity });
+    };
+    requestAnimationFrame(run);
+    if (z.font) whenFontsReady(run);   // re-measure once the chosen font has loaded
     return;
   }
   if (z.type === 'clock') {
     c.style.display = 'flex'; c.style.flexDirection = 'column'; c.style.alignItems = 'center'; c.style.justifyContent = 'center';
     const tm = el('div'), dt = el('div');
-    Object.assign(tm.style, { color: z.color, fontSize: U(z.fontSize), fontWeight: 700, lineHeight: 1, letterSpacing: '-.02em', fontVariantNumeric: 'tabular-nums' });
-    Object.assign(dt.style, { color: z.color, opacity: .7, fontSize: U(Math.round(z.fontSize * .32)), marginTop: U(Math.round(z.fontSize * .18)), fontWeight: 500 });
+    const ff = fontFamily(z);
+    Object.assign(tm.style, { color: z.color, fontSize: U(z.fontSize), fontWeight: z.weight || 700, lineHeight: 1, letterSpacing: '-.02em', fontVariantNumeric: 'tabular-nums', fontFamily: ff });
+    Object.assign(dt.style, { color: z.color, opacity: .7, fontSize: U(Math.round(z.fontSize * .32)), marginTop: U(Math.round(z.fontSize * .18)), fontWeight: 500, fontFamily: ff });
     const tick = () => {
       const d = new Date();
       tm.textContent = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: z.format !== '24' });
