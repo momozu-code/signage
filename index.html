@@ -94,13 +94,25 @@ header .brand span,#login .brand span{color:var(--accent)}
 #login{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:80;padding:20px}
 #login .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px;width:min(360px,100%)}
 #screens{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-start;justify-content:center;z-index:60;padding:40px 16px;overflow:auto}
-#screens .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;width:min(720px,100%)}
-.pairrow{display:grid;grid-template-columns:1fr 1.4fr auto;gap:8px;margin:14px 0 18px}
+#screens .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;width:min(820px,100%)}
+#screens h3{margin:0}
+.shead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.sfilter{display:flex;gap:8px}.sfilter select{width:auto;min-width:170px}
+.card{background:#0f1218;border:1px solid var(--line);border-radius:10px;padding:12px;margin:12px 0}
+.card summary{cursor:pointer;font-weight:600}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.grid2 .end{display:flex;align-items:flex-end}.grid2 .end button{width:100%}
+.grid3{display:grid;grid-template-columns:1fr 1.3fr auto;gap:8px;margin-top:8px}
 .slist{display:flex;flex-direction:column;gap:8px}
-.scr{display:grid;grid-template-columns:auto 1.2fr 1.2fr auto;gap:10px;align-items:center;background:#0f1218;border:1px solid var(--line);border-radius:10px;padding:10px}
-.dot{width:10px;height:10px;border-radius:50%;background:#555}.dot.on{background:#39d98a;box-shadow:0 0 8px #39d98a}
-.scr small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
-@media (max-width:600px){.pairrow{grid-template-columns:1fr}.scr{grid-template-columns:auto 1fr;}.scr>select,.scr>button{grid-column:2}}
+.ghead{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin:18px 0 4px;flex-wrap:wrap}
+.ghead b{font-size:15px}.ghead small{color:var(--muted);display:block;font-size:12px}
+.ghead .all{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)}.ghead .all select{width:auto}
+.scr{background:#0f1218;border:1px solid var(--line);border-radius:10px;padding:12px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.scr .top{grid-column:1/-1;display:flex;align-items:center;gap:10px}
+.scr .top input{font-weight:600}.scr .top .st{color:var(--muted);font-size:11px;white-space:nowrap}
+.scr label{margin-bottom:2px}
+.dot{width:10px;height:10px;border-radius:50%;background:#555;flex-shrink:0}.dot.on{background:#39d98a;box-shadow:0 0 8px #39d98a}
+@media (max-width:640px){.grid2,.grid3,.scr{grid-template-columns:1fr}.scr .top{flex-wrap:wrap}}
 @media (max-width:980px){
   .app{display:flex;flex-direction:column;height:auto}
   main{order:1;padding:12px}
@@ -164,12 +176,21 @@ header .brand span,#login .brand span{color:var(--accent)}
   <div id="lErr" style="color:var(--danger);font-size:12px;margin-top:10px"></div>
 </form></div>
 <div id="screens" hidden><div class="box">
-  <div style="display:flex;justify-content:space-between;align-items:center"><h3 style="margin:0">Screens</h3><button id="sClose">Close</button></div>
-  <form id="pairForm" class="pairrow">
-    <input id="pCode" inputmode="numeric" maxlength="8" placeholder="8-digit code on the TV" required>
-    <input id="pName" placeholder="Screen name, e.g. Front counter">
-    <button class="primary">Pair</button>
-  </form>
+  <div class="shead"><h3>Screens</h3><div class="sfilter"><select id="siteFilter" aria-label="Filter by site"></select><button id="sClose">Close</button></div></div>
+  <details class="card" id="pairBox"><summary>＋ Pair a new screen</summary>
+    <form id="pairForm" class="grid2">
+      <div><label>Code shown on the TV</label><input id="pCode" inputmode="numeric" maxlength="8" placeholder="8 digits" required></div>
+      <div><label>Screen name</label><input id="pName" placeholder="e.g. Lobby TV 1"></div>
+      <div><label>Site / office</label><select id="pSite"></select></div>
+      <div><label>Where in the office</label><input id="pLoc" placeholder="e.g. Reception, left wall"></div>
+      <div><label>Layout to show</label><select id="pLayout"></select></div>
+      <div class="end"><button class="primary">Pair screen</button></div>
+    </form>
+  </details>
+  <details class="card" id="sitesBox"><summary>🏢 Sites / offices (<span id="siteCount">0</span>)</summary>
+    <div id="siteList"></div>
+    <form id="siteForm" class="grid3"><input id="sName" placeholder="New site, e.g. Makati Office" required><input id="sAddr" placeholder="Address (optional)"><button class="primary">Add site</button></form>
+  </details>
   <div id="sList" class="slist"></div>
 </div></div>
 
@@ -515,42 +536,130 @@ let toastT = null;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 1800); }
 function renderAll() { renderLayoutSel(); fitStage(); renderStage(); renderInspector(); }
 
-/* ---------- screens ---------- */
+/* ---------- sites & screens ---------- */
+let sites = [];
+const getFilter = () => { try { return localStorage.getItem('signage.siteFilter') || 'all'; } catch (e) { return 'all'; } };
+const setFilter = v => { try { localStorage.setItem('signage.siteFilter', v); } catch (e) {} };
+function fillSelect(sel, opts, val) { sel.innerHTML = ''; opts.forEach(([v, t]) => { const o = el('option', null, t); o.value = v; sel.append(o); }); sel.value = val; if (sel.value !== val && opts.length) sel.value = opts[0][0]; }
+const siteOpts = () => [['', '— No site —']].concat(sites.map(x => [x.id, x.name]));
+const layoutOpts = () => [['', '— No layout —']].concat(state.layouts.map(L => [L.id, L.name]));
+const isOnline = s => s.last_seen && (Date.now() - new Date(s.last_seen).getTime()) < 60000;
+async function upd8(table, id, patch, msg) {
+  const { error } = await sb.from(table).update(patch).eq('id', id);
+  toast(error ? error.message : msg); return !error;
+}
+function armButton(btn, label, action) {
+  let arm = false;
+  btn.onclick = () => {
+    if (!arm) { arm = true; btn.textContent = 'Tap again'; setTimeout(() => { arm = false; btn.textContent = label; }, 3000); return; }
+    action();
+  };
+}
+
 async function renderScreens() {
   const list = $('#sList'); list.innerHTML = '';
-  const { data, error } = await sb.from('screens').select('*').eq('paired', true).order('created_at');
-  if (error) { list.append(el('div', 'note', 'Could not load screens: ' + error.message)); return; }
-  if (!data.length) list.append(el('div', 'note', 'No screens yet. Open player.html on the Fire Stick, then enter the code it shows above.'));
-  data.forEach(s => {
-    const row = el('div', 'scr');
-    const online = s.last_seen && (Date.now() - new Date(s.last_seen).getTime()) < 60000;
-    row.append(el('span', 'dot' + (online ? ' on' : '')));
-    const nm = el('div'); const ni = el('input'); ni.value = s.name || ''; ni.placeholder = 'Name';
-    ni.onchange = async () => { const { error } = await sb.from('screens').update({ name: ni.value }).eq('id', s.id); toast(error ? error.message : 'Renamed'); };
-    nm.append(ni, el('small', null, (online ? 'Online' : 'Offline') + (s.last_seen ? ' · last seen ' + new Date(s.last_seen).toLocaleString() : '')));
-    const ls = el('select'); const none = el('option', null, '— No layout —'); none.value = ''; ls.append(none);
-    state.layouts.forEach(L => { const o = el('option', null, L.name); o.value = L.id; ls.append(o); });
-    ls.value = s.layout_id || '';
-    ls.onchange = async () => { const { error } = await sb.from('screens').update({ layout_id: ls.value || null }).eq('id', s.id); toast(error ? error.message : 'Layout sent to ' + (s.name || 'screen')); };
-    const rm = el('button', 'danger', 'Unpair'); let arm = false;
-    rm.onclick = async () => {
-      if (!arm) { arm = true; rm.textContent = 'Tap again'; setTimeout(() => { arm = false; rm.textContent = 'Unpair'; }, 3000); return; }
-      const { error } = await sb.from('screens').delete().eq('id', s.id); toast(error ? error.message : 'Unpaired'); renderScreens();
-    };
-    row.append(nm, ls, rm); list.append(row);
+  const [sr, cr] = await Promise.all([
+    sb.from('sites').select('*').order('name'),
+    sb.from('screens').select('*').eq('paired', true).order('created_at')
+  ]);
+  if (sr.error || cr.error) { list.append(el('div', 'note', 'Could not load: ' + (sr.error || cr.error).message)); return; }
+  sites = sr.data; const screens = cr.data;
+
+  // filter + pair form
+  const f = getFilter();
+  fillSelect($('#siteFilter'), [['all', 'All sites'], ['none', 'No site']].concat(sites.map(x => [x.id, x.name])), f);
+  const pSiteKeep = $('#pSite').value;
+  fillSelect($('#pSite'), siteOpts(), pSiteKeep || (f !== 'all' && f !== 'none' ? f : ''));
+  fillSelect($('#pLayout'), layoutOpts(), $('#pLayout').value || (cur() ? cur().id : ''));
+  if (!screens.length) $('#pairBox').open = true;
+
+  // sites manager
+  $('#siteCount').textContent = sites.length;
+  const sl = $('#siteList'); sl.innerHTML = '';
+  if (!sites.length) sl.append(el('div', 'muted', 'No sites yet. Add your offices below, then assign screens to them.'));
+  sites.forEach(x => {
+    const r = el('div', 'grid3');
+    const n = el('input'); n.value = x.name; n.onchange = async () => { if (n.value.trim() && await upd8('sites', x.id, { name: n.value.trim() }, 'Site renamed')) renderScreens(); };
+    const a = el('input'); a.value = x.address || ''; a.placeholder = 'Address'; a.onchange = () => upd8('sites', x.id, { address: a.value }, 'Address saved');
+    const d = el('button', 'danger', 'Delete');
+    armButton(d, 'Delete', async () => { const { error } = await sb.from('sites').delete().eq('id', x.id); toast(error ? error.message : 'Site deleted. Its screens are now unassigned'); if (getFilter() === x.id) setFilter('all'); renderScreens(); });
+    r.append(n, a, d); sl.append(r);
+  });
+
+  // screens grouped by site
+  const groups = sites.map(x => ({ site: x, items: screens.filter(s => s.site_id === x.id) }));
+  groups.push({ site: null, items: screens.filter(s => !s.site_id || !sites.some(x => x.id === s.site_id)) });
+  const shown = groups.filter(g => f === 'all' ? g.items.length : f === 'none' ? !g.site : g.site && g.site.id === f);
+  if (!screens.length) list.append(el('div', 'note', 'No screens yet. Open the Signage Player app (or player.html) on a TV, then pair the code it shows.'));
+  shown.forEach(g => {
+    const h = el('div', 'ghead'); const t = el('div');
+    const on = g.items.filter(isOnline).length;
+    t.append(el('b', null, g.site ? g.site.name : 'No site'), el('small', null, (g.site && g.site.address ? g.site.address + ' · ' : '') + g.items.length + ' screen' + (g.items.length === 1 ? '' : 's') + ' · ' + on + ' online'));
+    h.append(t);
+    if (g.items.length > 1) {
+      const all = el('div', 'all'); const ls = el('select');
+      fillSelect(ls, [['__', 'Show on all…']].concat(layoutOpts().slice(1)), '__');
+      ls.onchange = async () => {
+        if (ls.value === '__') return;
+        const ids = g.items.map(s => s.id);
+        const { error } = await sb.from('screens').update({ layout_id: ls.value }).in('id', ids);
+        toast(error ? error.message : 'Layout sent to ' + ids.length + ' screens'); renderScreens();
+      };
+      all.append(ls); h.append(all);
+    }
+    list.append(h);
+    if (!g.items.length) list.append(el('div', 'muted', 'No screens at this site yet.'));
+    g.items.forEach(s => list.append(screenCard(s)));
   });
 }
+
+function screenCard(s) {
+  const card = el('div', 'scr');
+  const top = el('div', 'top');
+  const ni = el('input'); ni.value = s.name || ''; ni.placeholder = 'Screen name';
+  ni.onchange = () => upd8('screens', s.id, { name: ni.value }, 'Renamed');
+  const online = isOnline(s);
+  const st = el('span', 'st', (online ? 'Online' : 'Offline') + (s.last_seen ? ' · ' + new Date(s.last_seen).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''));
+  const rm = el('button', 'danger', 'Unpair');
+  armButton(rm, 'Unpair', async () => { const { error } = await sb.from('screens').delete().eq('id', s.id); toast(error ? error.message : 'Unpaired. The TV will show a new code'); renderScreens(); });
+  top.append(el('span', 'dot' + (online ? ' on' : '')), ni, st, rm);
+
+  const fSite = el('div'); const ss = el('select'); fillSelect(ss, siteOpts(), s.site_id || '');
+  ss.onchange = async () => { if (await upd8('screens', s.id, { site_id: ss.value || null }, 'Moved')) renderScreens(); };
+  fSite.append(el('label', null, 'Site / office'), ss);
+
+  const fLoc = el('div'); const li = el('input'); li.value = s.location || ''; li.placeholder = 'e.g. Reception, left wall';
+  li.onchange = () => upd8('screens', s.id, { location: li.value }, 'Location saved');
+  fLoc.append(el('label', null, 'Where in the office'), li);
+
+  const fLay = el('div'); const ls = el('select'); fillSelect(ls, layoutOpts(), s.layout_id || '');
+  ls.onchange = () => upd8('screens', s.id, { layout_id: ls.value || null }, 'Layout sent to ' + (ni.value || 'screen'));
+  fLay.append(el('label', null, 'Layout'), ls);
+
+  card.append(top, fSite, fLoc, fLay);
+  return card;
+}
+
 $('#screensBtn').onclick = () => { $('#screens').hidden = false; renderScreens(); };
 $('#sClose').onclick = () => { $('#screens').hidden = true; };
+$('#siteFilter').onchange = e => { setFilter(e.target.value); renderScreens(); };
+$('#siteForm').onsubmit = async e => {
+  e.preventDefault();
+  const name = $('#sName').value.trim(); if (!name) return;
+  const { error } = await sb.from('sites').insert({ name, address: $('#sAddr').value.trim() || null });
+  if (error) { toast(error.message); return; }
+  $('#sName').value = ''; $('#sAddr').value = ''; toast('Site added'); renderScreens();
+};
 $('#pairForm').onsubmit = async e => {
   e.preventDefault();
   const code = $('#pCode').value.replace(/\D/g, '');
   if (code.length !== 8) { toast('The code has 8 digits'); return; }
-  const { data, error } = await sb.from('screens').update({ paired: true, name: $('#pName').value || 'Screen', layout_id: cur() ? cur().id : null }).eq('pair_code', code).select();
+  const patch = { paired: true, name: $('#pName').value.trim() || 'Screen', site_id: $('#pSite').value || null, location: $('#pLoc').value.trim() || null, layout_id: $('#pLayout').value || null };
+  const { data, error } = await sb.from('screens').update(patch).eq('pair_code', code).eq('paired', false).select();
   if (error) { toast(error.message); return; }
-  if (!data.length) { toast('No screen is showing that code'); return; }
-  $('#pCode').value = ''; $('#pName').value = '';
-  toast('Paired. It will show "' + cur().name + '" shortly'); renderScreens();
+  if (!data.length) { toast('No unpaired screen is showing that code'); return; }
+  $('#pCode').value = ''; $('#pName').value = ''; $('#pLoc').value = '';
+  toast('Paired ' + patch.name); renderScreens();
 };
 
 /* ---------- sign in ---------- */
