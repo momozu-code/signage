@@ -139,6 +139,21 @@ header select{width:auto;min-width:150px}
 .item .ctl input{width:56px;padding:3px 5px;font-size:12px}
 .pickgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;max-height:420px;overflow:auto;padding:2px}
 
+/* news */
+.nform{display:grid;grid-template-columns:170px 1fr;gap:18px;margin-top:6px}
+.nimg{position:relative;width:170px;height:170px;border-radius:20px;border:1px dashed #3a4150;background:#0f1218 center/cover no-repeat;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--muted);cursor:pointer;overflow:hidden;font-weight:600}
+.nimg small{font-weight:400;font-size:11px}
+.nimg input{position:absolute;top:0;right:0;bottom:0;left:0;opacity:0;cursor:pointer}
+.nimg.has span{display:none}
+.nlist{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.nrow{display:grid;grid-template-columns:72px 1fr auto;gap:14px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px}
+.nrow .th{width:72px;height:72px;border-radius:14px;background:#222 center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:10px}
+.nrow .mt{color:#fa0060;font-size:12px;font-weight:600}.nrow .mt b{text-transform:uppercase;letter-spacing:.1em}
+.nrow .hl{font-size:16px;font-weight:600;margin:2px 0 6px}
+.nrow .sites{display:flex;gap:4px;flex-wrap:wrap}
+.nrow .acts{display:flex;flex-direction:column;gap:6px}
+.nrow.editing{border-color:var(--accent)}
+
 /* screens */
 .slist{display:flex;flex-direction:column;gap:8px}
 .ghead{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin:18px 0 4px;flex-wrap:wrap}
@@ -177,6 +192,7 @@ header select{width:auto;min-width:150px}
   .split{grid-template-columns:1fr}.side{border-right:0;border-bottom:1px solid var(--line)}
 }
 @media (max-width:640px){
+  .nform{grid-template-columns:1fr}.nrow{grid-template-columns:56px 1fr}.nrow .th{width:56px;height:56px}.nrow .acts{grid-column:1/-1;flex-direction:row}
   .grid2,.grid3,.scr,.urow{grid-template-columns:1fr}.scr .top{flex-wrap:wrap}
   .toolbar input{width:100%}
 }
@@ -189,6 +205,7 @@ header select{width:auto;min-width:150px}
     <button data-view="layouts" data-admin>Layouts</button>
     <button data-view="content">Content</button>
     <button data-view="playlists">Playlists</button>
+    <button data-view="news">News</button>
     <button data-view="screens">Screens</button>
     <button data-view="users" data-admin>Users</button>
   </nav>
@@ -277,6 +294,30 @@ header select{width:auto;min-width:150px}
   </div>
 </section>
 
+<!-- NEWS -->
+<section id="v-news" class="view">
+  <div class="pane">
+    <div class="vhead"><div><h2>News</h2><div class="muted">Post announcements here. Ticker zones set to <b>News feed</b> show the newest posts tagged for each screen's site.</div></div><div class="grow"></div><button id="newsPreview">▶ Preview ticker</button></div>
+    <div class="card">
+      <h3 id="nfTitle">New post</h3>
+      <form id="newsForm" class="nform">
+        <label class="nimg" id="nfImgBox"><span>＋ Image<br><small>shown square (1:1)</small></span><input type="file" id="nfImg" accept="image/*"></label>
+        <div>
+          <div class="grid2" style="margin-top:0">
+            <div><label>Department / source</label><input id="nfDept" list="deptList" placeholder="e.g. HR"></div>
+            <div><label>Date</label><input id="nfDate" type="date" required></div>
+          </div>
+          <div class="field" style="margin-top:10px"><label>Headline</label><textarea id="nfHead" rows="2" required placeholder="e.g. Open enrollment closes Friday"></textarea></div>
+          <div class="field"><label>Show at these sites</label><div class="chips" id="nfSites"></div></div>
+          <div class="btns"><button class="primary" id="nfSave">Post</button><button type="button" id="nfCancel" hidden>Cancel</button><button type="button" id="nfClearImg" class="ghost" hidden>Remove image</button></div>
+        </div>
+      </form>
+    </div>
+    <div id="newsList" class="nlist"></div>
+  </div>
+</section>
+<datalist id="deptList"></datalist>
+
 <!-- SCREENS -->
 <section id="v-screens" class="view">
   <div class="pane">
@@ -330,7 +371,7 @@ header select{width:auto;min-width:150px}
 
 <script src="supabase.js?v=5"></script>
 <script src="config.js?v=5"></script>
-<script src="render.js?v=13"></script>
+<script src="render.js?v=14"></script>
 <script>
 /* ================= basics ================= */
 const W = SIGN_W, H = SIGN_H;
@@ -374,7 +415,7 @@ addEventListener('beforeunload', e => { if (Object.keys(saveQ).length) { e.preve
 
 /* ================= session, roles, data ================= */
 let me = null, isAdmin = false, mySites = [];
-const D = { sites: [], layouts: [], folders: [], content: [], playlists: [], screens: [], profiles: [], userSites: [], fonts: [] };
+const D = { sites: [], layouts: [], folders: [], content: [], playlists: [], screens: [], profiles: [], userSites: [], fonts: [], news: [] };
 let curSite = 'all';
 
 async function loadAll() {
@@ -385,15 +426,16 @@ async function loadAll() {
     sb.from('content').select('*').order('created_at', { ascending: false }),
     sb.from('playlists').select('*').order('name'),
     sb.from('screens').select('*').eq('paired', true).order('created_at'),
-    sb.from('fonts').select('*').order('name')
+    sb.from('fonts').select('*').order('name'),
+    sb.from('news').select('*').order('published_on', { ascending: false }).order('created_at', { ascending: false }).limit(500)
   ];
   if (isAdmin) qs.push(sb.from('profiles').select('*').order('email'), sb.from('user_sites').select('*'));
   const r = await Promise.all(qs);
   const bad = r.find(x => x.error); if (bad) toast('Could not load: ' + bad.error.message);
   [D.sites, D.layouts, D.folders, D.content, D.playlists, D.screens] = r.slice(0, 6).map(x => x.data || []);
   D.layouts = D.layouts.map(row => ({ id: row.id, name: row.name, bg: (row.data && row.data.bg) || '#000000', zones: (row.data && row.data.zones) || [], updated_at: row.updated_at }));
-  D.fonts = r[6].data || [];
-  if (isAdmin) { D.profiles = r[7].data || []; D.userSites = r[8].data || []; }
+  D.fonts = r[6].data || []; D.news = r[7].data || [];
+  if (isAdmin) { D.profiles = r[8].data || []; D.userSites = r[9].data || []; }
 }
 
 const siteName = id => { const s = D.sites.find(x => x.id === id); return s ? s.name : (id ? 'Other site' : 'Shared'); };
@@ -426,6 +468,7 @@ function renderView() {
   if (view === 'content') renderContent();
   if (view === 'playlists') renderPlaylists();
   if (view === 'screens') renderScreens();
+  if (view === 'news') renderNews();
   if (view === 'users') renderUsers();
 }
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.dataset.view));
@@ -438,8 +481,16 @@ function playlistItems(pl) {
     return { id: c.id, kind: c.kind, url: c.url, name: c.name, text: c.body, source: c.source, date: c.published_on, duration: it.duration || c.duration };
   }).filter(Boolean);
 }
-function resolveZone(z, overrides) {
+// News for a site, newest first (site undefined = everything this account can see).
+function newsItemsFor(site, z) {
+  const n = Math.max(1, Math.min(50, +z.newsCount || 5));
+  return D.news.filter(x => site === undefined || x.all_sites || (site && (x.site_ids || []).includes(site)))
+    .slice().sort((a, b) => (b.published_on || '').localeCompare(a.published_on || '') || (b.created_at || '').localeCompare(a.created_at || ''))
+    .slice(0, n).map(x => ({ id: x.id, kind: 'news', text: x.headline, source: x.department, date: x.published_on, image: x.image_url, duration: +z.newsDuration || 8 }));
+}
+function resolveZone(z, overrides, site) {
   if (z.type !== 'media' && z.type !== 'ticker') return z;
+  if (z.type === 'ticker' && z.feed === 'news') return Object.assign({}, z, { items: newsItemsFor(site === undefined ? (curSite !== 'all' ? curSite : undefined) : site, z) });
   const pid = (overrides && overrides[z.id]) || z.playlist_id;
   if (!pid) return z;
   return Object.assign({}, z, { items: playlistItems(D.playlists.find(p => p.id === pid)), playlist_id: pid });
@@ -662,7 +713,7 @@ function renderInspector() {
   px.textContent = 'Artwork size: ' + pw + ' × ' + ph + ' px (' + ratio + '). For extra-sharp 4K: ' + pw * 2 + ' × ' + ph * 2 + '.';
   insp.append(pos, px, fld('Background', inp('color', z.bg, i => upd(() => z.bg = i.value))), el('hr'));
 
-  if (z.type === 'media' || z.type === 'ticker') {
+  if (z.type === 'media') {
     insp.append(fld('Default playlist', sel(plOpts(z.type), z.playlist_id || '', v => upd(() => z.playlist_id = v || null, true))));
     insp.append(el('div', 'muted', 'Screens can choose a different playlist for this zone in Screens.'));
     if (z.type === 'media' && z.items && z.items.length && !z.playlist_id) {
@@ -675,9 +726,9 @@ function renderInspector() {
     insp.append(fld('Fit', seg([['cover', 'Fill (crop)'], ['contain', 'Fit (no crop)']], z.fit, v => upd(() => z.fit = v))));
     insp.append(fld('Shape', seg([['1', 'Locked 16:9'], ['0', 'Free']], z.lock ? '1' : '0', v => upd(() => { z.lock = v === '1'; enforceLock(z); }, true))));
   }
-  if (z.type === 'text' || z.type === 'ticker' || z.type === 'clock') insp.append(fontPicker(z));
-  if (z.type === 'text' || z.type === 'ticker') {
-    insp.append(fld(z.type === 'ticker' ? 'Text shown when there is no playlist' : 'Text', inp('textarea', z.text, i => upd(() => z.text = i.value))));
+  if (z.type === 'text' || z.type === 'clock') insp.append(fontPicker(z));
+  if (z.type === 'text') {
+    insp.append(fld('Text', inp('textarea', z.text, i => upd(() => z.text = i.value))));
     const r = el('div', 'row');
     r.append(fld('Size (px)', inp('number', z.fontSize, i => upd(() => z.fontSize = Math.max(8, +i.value || 40)), { min: 8 })), fld('Colour', inp('color', z.color, i => upd(() => z.color = i.value))));
     insp.append(r, fld('Weight', seg([['400', 'Regular'], ['500', 'Medium'], ['700', 'Bold'], ['800', 'Heavy']], String(z.weight), v => upd(() => z.weight = +v))));
@@ -687,20 +738,57 @@ function renderInspector() {
     insp.append(fld('Vertical', seg([['top', 'Top'], ['center', 'Middle'], ['bottom', 'Bottom']], z.valign, v => upd(() => z.valign = v))));
   }
   if (z.type === 'ticker') {
-    insp.append(fld('Style', seg([['scroll', 'Scrolling'], ['slides', 'One at a time']], z.mode === 'slides' ? 'slides' : 'scroll', v => upd(() => z.mode = v, true))));
-    insp.append(fld('Source line (department)', seg([['1', 'Show'], ['0', 'Hide']], z.showSource === false ? '0' : '1', v => upd(() => z.showSource = v === '1'))));
-    insp.append(fld('Date line', seg([['1', 'Show'], ['0', 'Hide']], z.showDate === false ? '0' : '1', v => upd(() => z.showDate = v === '1'))));
-    const sr = el('div', 'row');
-    sr.append(fld('Small text size', inp('range', Math.round((z.smallScale || 0.32) * 100), i => upd(() => z.smallScale = (+i.value) / 100), { min: 25, max: 70, step: 1 })));
-    const sc = inp('color', z.subColor || '#fa0060', i => upd(() => z.subColor = i.value));
-    const scw = el('div'); scw.append(sc); const rs = el('button', 'sm ghost', 'Same as text'); rs.type = 'button'; rs.onclick = () => upd(() => z.subColor = z.color, true);
-    const rr = el('button', 'sm ghost', 'ibex red'); rr.type = 'button'; rr.onclick = () => upd(() => delete z.subColor, true); scw.append(rr); scw.append(rs);
-    sr.append(fld('Small text colour', scw)); insp.append(sr);
+    const weights = [['400', 'Regular'], ['500', 'Medium'], ['700', 'Bold'], ['800', 'Heavy']];
+    insp.append(el('h3', null, 'Announcements'));
+    insp.append(fld('Get them from', seg([['news', 'News feed'], ['playlist', 'Playlist']], z.feed === 'news' ? 'news' : 'playlist',
+      v => upd(() => { if (v === 'news') { z.feed = 'news'; if (!z.mode) z.mode = 'slides'; } else delete z.feed; }, true))));
+    if (z.feed === 'news') {
+      const nr = el('div', 'row');
+      nr.append(fld('How many (newest)', inp('number', z.newsCount || 5, i => upd(() => z.newsCount = Math.max(1, Math.min(50, +i.value || 5))), { min: 1, max: 50 })),
+        fld('Seconds each', inp('number', z.newsDuration || 8, i => upd(() => z.newsDuration = Math.max(2, +i.value || 8)), { min: 2 })));
+      insp.append(nr, el('div', 'muted', 'Each screen shows the newest posts tagged for its site, plus all-sites posts. Post them in News.'));
+    } else {
+      insp.append(fld('Default playlist', sel(plOpts('ticker'), z.playlist_id || '', v => upd(() => z.playlist_id = v || null, true))));
+      insp.append(el('div', 'muted', 'Screens can choose a different playlist for this zone in Screens.'));
+    }
+    insp.append(fld('Text when there is nothing to show', inp('textarea', z.text, i => upd(() => z.text = i.value))));
+
+    insp.append(el('hr'), el('h3', null, 'Motion'));
+    insp.append(fld('Style', seg([['slides', 'One at a time'], ['scroll', 'Scrolling']], z.mode === 'slides' ? 'slides' : 'scroll', v => upd(() => z.mode = v, true))));
     if (z.mode === 'slides') {
       insp.append(fld('Transition', seg([['up', 'Slide up'], ['left', 'Slide left'], ['fade', 'Fade']], z.transition || 'up', v => upd(() => z.transition = v))));
-      insp.append(fld('Align', seg([['center', 'Center'], ['left', 'Left']], z.align === 'left' ? 'left' : 'center', v => upd(() => z.align = v))));
-      insp.append(el('div', 'muted', 'Each announcement in the ticker playlist shows on its own for its set time (8 s unless changed). Long ones shrink to fit. Use ▶ Preview to see the transitions.'));
+      insp.append(fld('Text align', seg([['left', 'Left'], ['center', 'Center']], z.align === 'center' ? 'center' : 'left', v => upd(() => z.align = v))));
     } else insp.append(fld('Speed', inp('range', z.speed, i => upd(() => z.speed = +i.value), { min: 40, max: 500, step: 10 })));
+
+    insp.append(el('hr'), el('h3', null, 'Picture (1:1, left)'));
+    insp.append(fld('Picture', seg([['1', 'Show'], ['0', 'Hide']], z.showImage === false ? '0' : '1', v => upd(() => z.showImage = v === '1', true))));
+    if (z.showImage !== false) {
+      const ir = el('div', 'row');
+      ir.append(fld('Size (% of zone height)', inp('range', Math.round((+z.imgScale || 0.74) * 100), i => upd(() => z.imgScale = (+i.value) / 100), { min: 40, max: 95, step: 1 })),
+        fld('Corner radius (px)', inp('number', z.imgRadius == null ? 18 : z.imgRadius, i => upd(() => z.imgRadius = Math.max(0, +i.value || 0)), { min: 0 })));
+      insp.append(ir, el('div', 'muted', 'Picture size on screen: ' + tickerImgSize(z) + ' × ' + tickerImgSize(z) + ' px.'));
+    }
+
+    insp.append(el('hr'), el('h3', null, 'Line 1 · Department: date'));
+    const vis = el('div', 'row');
+    vis.append(fld('Department', seg([['1', 'Show'], ['0', 'Hide']], z.showSource === false ? '0' : '1', v => upd(() => z.showSource = v === '1'))),
+      fld('Date', seg([['1', 'Show'], ['0', 'Hide']], z.showDate === false ? '0' : '1', v => upd(() => z.showDate = v === '1'))));
+    insp.append(vis);
+    const l1 = el('div', 'row');
+    const sc = inp('color', z.subColor || '#fa0060', i => upd(() => z.subColor = i.value));
+    const scw = el('div'); scw.append(sc);
+    const rr = el('button', 'sm ghost', 'ibex red'); rr.type = 'button'; rr.onclick = () => upd(() => delete z.subColor, true);
+    const rs = el('button', 'sm ghost', 'Same as headline'); rs.type = 'button'; rs.onclick = () => upd(() => z.subColor = z.color, true);
+    scw.append(rr, rs);
+    l1.append(fld('Size (px)', inp('number', metaSize(z), i => upd(() => z.metaSize = Math.max(8, +i.value || 16)), { min: 8 })), fld('Colour', scw));
+    insp.append(l1, fld('Weight', seg(weights, String(z.metaWeight || 500), v => upd(() => z.metaWeight = +v))),
+      fontPicker(z, 'metaFont', 'metaFontUrl', 'Font', 'Same as headline'));
+
+    insp.append(el('hr'), el('h3', null, 'Line 2 · Headline'));
+    const l2 = el('div', 'row');
+    l2.append(fld('Size (px)', inp('number', z.fontSize, i => upd(() => z.fontSize = Math.max(8, +i.value || 40)), { min: 8 })), fld('Colour', inp('color', z.color, i => upd(() => z.color = i.value))));
+    insp.append(l2, fld('Weight', seg(weights, String(z.weight || 700), v => upd(() => z.weight = +v))), fontPicker(z));
+    insp.append(el('div', 'muted', 'Long headlines shrink to fit, then wrap to two lines. Use ▶ Preview to see the motion.'));
   }
   if (z.type === 'clock') {
     const r = el('div', 'row');
@@ -716,21 +804,22 @@ function renderInspector() {
   const del = el('button', 'sm danger', 'Delete zone'); del.onclick = () => upd(() => { zs.splice(idx, 1); selId = null; }, true);
   b.append(fwd, bck, dup, del); insp.append(b);
 }
-function fontPicker(z) {
+function fontPicker(z, fk, uk, label, defLabel) {
+  fk = fk || 'font'; uk = uk || 'fontUrl';
   const wrapF = el('div', 'field');
-  wrapF.append(el('label', null, 'Font'));
-  const opts = [['', 'Default (Inter)']]
+  wrapF.append(el('label', null, label || 'Font'));
+  const opts = [['', defLabel || 'Default (Inter)']]
     .concat(D.fonts.map(f => ['c:' + f.id, '★ ' + f.name + ' (uploaded)']))
     .concat(Object.keys(SIGN_FONTS).map(n => ['g:' + n, n]));
-  const cur = z.fontUrl ? ('c:' + ((D.fonts.find(f => f.url === z.fontUrl) || {}).id || '')) : (z.font ? 'g:' + z.font : '');
+  const cur = z[uk] ? ('c:' + ((D.fonts.find(f => f.url === z[uk]) || {}).id || '')) : (z[fk] ? 'g:' + z[fk] : '');
   const s1 = sel(opts, cur, v => upd(() => {
-    if (!v) { delete z.font; delete z.fontUrl; }
-    else if (v.startsWith('g:')) { z.font = v.slice(2); delete z.fontUrl; }
-    else { const f = D.fonts.find(x => x.id === v.slice(2)); if (f) { z.font = f.name; z.fontUrl = f.url; } }
+    if (!v) { delete z[fk]; delete z[uk]; }
+    else if (v.startsWith('g:')) { z[fk] = v.slice(2); delete z[uk]; }
+    else { const f = D.fonts.find(x => x.id === v.slice(2)); if (f) { z[fk] = f.name; z[uk] = f.url; } }
   }));
   const up = el('label', 'file'); const ub = el('button', 'sm', '⬆ Upload a font file'); ub.type = 'button'; ub.tabIndex = -1;
   const fi = el('input'); fi.type = 'file'; fi.accept = '.ttf,.otf,.woff,.woff2';
-  fi.onchange = async () => { const f = fi.files[0]; fi.value = ''; if (f) { const font = await uploadFont(f); if (font) upd(() => { z.font = font.name; z.fontUrl = font.url; }, true); } };
+  fi.onchange = async () => { const f = fi.files[0]; fi.value = ''; if (f) { const font = await uploadFont(f); if (font) upd(() => { z[fk] = font.name; z[uk] = font.url; }, true); } };
   up.append(ub, fi); up.style.marginTop = '6px';
   wrapF.append(s1, up, el('div', 'muted', 'Upload your brand font (.ttf, .otf, .woff or .woff2) to use it on every layout.'));
   return wrapF;
@@ -1039,6 +1128,137 @@ function renderPlEditor() {
 }
 function renderPlaylistsListOnly() { const keep = $('#plEditor').scrollTop; renderPlaylists(); $('#plEditor').scrollTop = keep; }
 
+/* ================= NEWS ================= */
+let nfEdit = null, nfBlob = null, nfBlobType = '', nfImageUrl = null, nfImagePath = null, nfSites = [], nfAll = false;
+const todayStr = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const newsVisible = n => curSite === 'all' || n.all_sites || (n.site_ids || []).includes(curSite);
+const canEditNews = n => isAdmin || (!n.all_sites && (n.site_ids || []).length > 0 && n.site_ids.every(x => mySites.includes(x)));
+function postSites() { return D.sites.filter(x => isAdmin || mySites.includes(x.id)); }
+
+// Crop to a centred square and shrink to 512 px, so pictures stay light on the Fire Stick.
+function cropSquare(file, size) {
+  return new Promise((resolve, reject) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const s0 = Math.min(img.naturalWidth, img.naturalHeight), out = Math.min(size, s0);
+      const cv = document.createElement('canvas'); cv.width = cv.height = out;
+      cv.getContext('2d').drawImage(img, (img.naturalWidth - s0) / 2, (img.naturalHeight - s0) / 2, s0, s0, 0, 0, out, out);
+      URL.revokeObjectURL(url);
+      const type = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+      cv.toBlob(b => b ? resolve({ blob: b, type }) : reject(new Error('Could not read that image')), type, 0.88);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that image')); };
+    img.src = url;
+  });
+}
+function setNfPreview(url) {
+  const box = $('#nfImgBox');
+  box.style.backgroundImage = url ? 'url("' + url + '")' : ''; box.classList.toggle('has', !!url);
+  $('#nfClearImg').hidden = !url;
+}
+function resetNewsForm() {
+  nfEdit = null; nfBlob = null; nfImageUrl = null; nfImagePath = null; nfAll = false;
+  nfSites = curSite !== 'all' ? [curSite] : (isAdmin ? [] : mySites.slice(0, 1));
+  $('#nfDept').value = ''; $('#nfHead').value = ''; $('#nfDate').value = todayStr();
+  $('#nfTitle').textContent = 'New post'; $('#nfSave').textContent = 'Post'; $('#nfCancel').hidden = true;
+  setNfPreview(null); renderNfSites();
+}
+function renderNfSites() {
+  const w = $('#nfSites'); w.innerHTML = '';
+  const chip = (label, on, disabled, onToggle) => {
+    const c = el('label', 'chip' + (on ? ' on' : '')); const cb = el('input'); cb.type = 'checkbox'; cb.checked = on; cb.disabled = !!disabled;
+    if (disabled) c.style.opacity = 0.45;
+    cb.onchange = () => onToggle(cb.checked); c.append(cb, document.createTextNode(label)); w.append(c);
+  };
+  if (isAdmin) chip('All sites', nfAll, false, on => { nfAll = on; renderNfSites(); });
+  postSites().forEach(x => chip(x.name, !nfAll && nfSites.includes(x.id), nfAll, on => { nfSites = on ? nfSites.concat(x.id) : nfSites.filter(y => y !== x.id); renderNfSites(); }));
+  if (!postSites().length) w.append(el('span', 'muted', isAdmin ? 'Add sites in Screens first' : 'Your account has no site yet'));
+}
+$('#nfImg').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  if (!f.type.startsWith('image/')) return toast('Choose an image file');
+  try { const r = await cropSquare(f, 512); nfBlob = r.blob; nfBlobType = r.type; setNfPreview(URL.createObjectURL(r.blob)); }
+  catch (err) { toast(err.message); }
+};
+$('#nfClearImg').onclick = () => { nfBlob = null; nfImageUrl = null; setNfPreview(null); };
+$('#nfCancel').onclick = () => { resetNewsForm(); renderNews(); };
+$('#newsForm').onsubmit = async e => {
+  e.preventDefault();
+  const headline = $('#nfHead').value.trim();
+  if (!headline) return toast('Write a headline');
+  if (!nfAll && !nfSites.length) return toast('Pick at least one site');
+  $('#nfSave').disabled = true;
+  try {
+    let image_url = nfImageUrl, image_path = nfImagePath;
+    if (nfBlob) {
+      const path = 'news/' + uuid() + (nfBlobType === 'image/png' ? '.png' : '.jpg');
+      const up = await sb.storage.from('media').upload(path, nfBlob, { contentType: nfBlobType, cacheControl: '31536000' });
+      if (up.error) throw up.error;
+      image_url = sb.storage.from('media').getPublicUrl(path).data.publicUrl; image_path = path;
+    }
+    const row = { department: $('#nfDept').value.trim() || null, headline, published_on: $('#nfDate').value || todayStr(),
+      all_sites: nfAll, site_ids: nfAll ? [] : nfSites, image_url: image_url || null, image_path: image_path || null };
+    if (nfEdit) {
+      const old = D.news.find(x => x.id === nfEdit);
+      const { error } = await sb.from('news').update(row).eq('id', nfEdit); if (error) throw error;
+      if (old && old.image_path && old.image_path !== row.image_path) sb.storage.from('media').remove([old.image_path]).then(() => {});
+      Object.assign(old, row); toast('Post updated');
+    } else {
+      row.id = uuid(); row.created_at = new Date().toISOString();
+      const { error } = await sb.from('news').insert(row); if (error) throw error;
+      D.news.unshift(row); toast('Posted. Screens pick it up within about 15 seconds');
+    }
+    resetNewsForm(); renderNews();
+  } catch (err) { toast('Not saved: ' + err.message); }
+  $('#nfSave').disabled = false;
+};
+function editNews(n) {
+  nfEdit = n.id; nfBlob = null; nfImageUrl = n.image_url; nfImagePath = n.image_path; nfAll = !!n.all_sites; nfSites = (n.site_ids || []).slice();
+  $('#nfDept').value = n.department || ''; $('#nfHead').value = n.headline; $('#nfDate').value = n.published_on || todayStr();
+  $('#nfTitle').textContent = 'Edit post'; $('#nfSave').textContent = 'Save changes'; $('#nfCancel').hidden = false;
+  setNfPreview(n.image_url); renderNfSites(); renderNewsList(); scrollTo({ top: 0, behavior: 'smooth' });
+}
+function renderNews() {
+  if (!$('#nfDate').value) resetNewsForm(); else renderNfSites();
+  const dl = $('#deptList'); dl.innerHTML = '';
+  [...new Set(D.news.map(n => n.department).concat(D.content.map(c => c.source)).filter(Boolean))].sort().forEach(v => { const o = el('option'); o.value = v; dl.append(o); });
+  renderNewsList();
+}
+function renderNewsList() {
+  const list = $('#newsList'); list.innerHTML = '';
+  const items = D.news.filter(newsVisible).sort((a, b) => (b.published_on || '').localeCompare(a.published_on || '') || (b.created_at || '').localeCompare(a.created_at || ''));
+  if (!items.length) { list.append(el('div', 'empty', 'No news yet. Post the first one above.')); return; }
+  list.append(el('h3', null, 'Posts (' + items.length + ') · newest first'));
+  items.forEach(n => {
+    const r = el('div', 'nrow' + (nfEdit === n.id ? ' editing' : ''));
+    const th = el('div', 'th', n.image_url ? '' : 'No image'); if (n.image_url) th.style.backgroundImage = 'url("' + encodeURI(n.image_url) + '")';
+    const mid = el('div');
+    const mt = el('div', 'mt'); if (n.department) mt.append(el('b', null, n.department + ': ')); mt.append(document.createTextNode(fmtDate(n.published_on)));
+    const sites = el('div', 'sites');
+    if (n.all_sites) { const b = siteBadge(null); b.textContent = 'All sites'; sites.append(b); }
+    (n.site_ids || []).forEach(id => sites.append(siteBadge(id)));
+    mid.append(mt, el('div', 'hl', n.headline), sites);
+    const acts = el('div', 'acts');
+    if (canEditNews(n)) {
+      const ed = el('button', 'sm', 'Edit'); ed.onclick = () => editNews(n);
+      const del = el('button', 'sm danger', 'Delete');
+      armButton(del, 'Delete', async () => {
+        const { error } = await sb.from('news').delete().eq('id', n.id); if (error) return toast(error.message);
+        if (n.image_path) sb.storage.from('media').remove([n.image_path]).then(() => {});
+        D.news = D.news.filter(x => x.id !== n.id); if (nfEdit === n.id) resetNewsForm(); toast('Post deleted'); renderNewsList();
+      });
+      acts.append(ed, del);
+    } else acts.append(el('span', 'muted', 'View only'));
+    r.append(th, mid, acts); list.append(r);
+  });
+}
+$('#newsPreview').onclick = () => {
+  const z = Object.assign(zone('ticker', 0, 82, 100, 18), { feed: 'news', mode: 'slides', bg: '#141414', color: '#f6f4ee', fontSize: 52 });
+  const items = newsItemsFor(curSite !== 'all' ? curSite : undefined, z);
+  if (!items.length) return toast('Post some news first');
+  playZones('#000', [Object.assign(z, { items })]);
+};
+
 /* ================= SCREENS ================= */
 const layoutOpts = () => [['', '— No layout —']].concat(D.layouts.map(L => [L.id, L.name]));
 const isOnline = s => s.last_seen && (Date.now() - new Date(s.last_seen).getTime()) < 60000;
@@ -1128,6 +1348,10 @@ function screenCard(s) {
     const zw = el('div', 'zones');
     pz.forEach(z => {
       const d = el('div');
+      if (z.type === 'ticker' && z.feed === 'news') {
+        d.append(el('label', null, '📰 ' + z.name + ' zone'), el('div', 'muted', 'News feed: newest ' + (z.newsCount || 5) + ' posts for this site'));
+        zw.append(d); return;
+      }
       const def = D.playlists.find(p => p.id === z.playlist_id);
       const opts = [['', 'Layout default' + (def ? ': ' + def.name : ' (none)')]].concat(
         D.playlists.filter(p => p.kind === z.type && (!p.site_id || p.site_id === s.site_id)).map(p => [p.id, p.name + (p.site_id ? '' : ' (shared)')]));
@@ -1138,7 +1362,7 @@ function screenCard(s) {
       });
       d.append(el('label', null, (z.type === 'ticker' ? '📝 ' : '🎞 ') + z.name + ' zone'), zs); zw.append(d);
     });
-    const pv = el('button', 'sm', '▶ Preview this screen'); pv.onclick = () => playZones(L.bg, L.zones.map(z => resolveZone(z, s.zone_playlists)));
+    const pv = el('button', 'sm', '▶ Preview this screen'); pv.onclick = () => playZones(L.bg, L.zones.map(z => resolveZone(z, s.zone_playlists, s.site_id || null)));
     const pd = el('div'); pd.style.display = 'flex'; pd.style.alignItems = 'flex-end'; pd.append(pv); zw.append(pd);
     card.append(zw);
   }

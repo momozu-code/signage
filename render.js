@@ -44,19 +44,22 @@ function fmtDate(d) {
   if (p.length < 3 || !p[0]) return '';
   try { return new Date(p[0], p[1] - 1, p[2]).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }); } catch (e) { return String(d).slice(0, 10); }
 }
+// Line 1 (source + date) has its own size, colour, weight and font; defaults follow the headline.
+function metaSize(z) { return +z.metaSize || Math.round(z.fontSize * (z.smallScale || 0.32)); }
+function metaFont(z) { return z.metaFont ? fontFamily({ font: z.metaFont, fontUrl: z.metaFontUrl }) : fontFamily(z); }
 function smallStyle(z, ff, kind) {
-  const size = Math.round(z.fontSize * (z.smallScale || 0.32));
-  const st = { color: z.subColor || '#FA0060', opacity: 1, fontSize: U(size), fontFamily: ff, lineHeight: 1.2, whiteSpace: 'nowrap', fontWeight: 600 };
+  const st = { color: z.subColor || '#FA0060', opacity: 1, fontSize: U(metaSize(z)), fontFamily: metaFont(z), lineHeight: 1.2, whiteSpace: 'nowrap', fontWeight: +z.metaWeight || 500 };
   if (kind === 'source') { st.textTransform = 'uppercase'; st.letterSpacing = '0.12em'; }
-  else { st.fontWeight = 500; }
   return st;
 }
+// The small square picture at the left of a ticker announcement (design px).
+function tickerImgSize(z) { return Math.round((z.h / 100) * window.SIGN_H * (+z.imgScale || 0.74)); }
 // One small line above the headline: "SOURCE: Nov 11, 2026" (either part can be hidden).
 function metaLine(z, ff, m, tag) {
   const showS = z.showSource !== false && m.source, showD = z.showDate !== false && m.date;
   if (!showS && !showD) return null;
   const line = el(tag || 'div'); Object.assign(line.style, smallStyle(z, ff, 'date'));
-  if (showS) { const sp = el('span', null, m.source + (showD ? ':' : '')); sp.style.textTransform = 'uppercase'; sp.style.letterSpacing = '0.12em'; sp.style.fontWeight = 600; line.append(sp); }
+  if (showS) { const sp = el('span', null, m.source + (showD ? ':' : '')); sp.style.textTransform = 'uppercase'; sp.style.letterSpacing = '0.12em'; sp.style.fontWeight = Math.min(900, (+z.metaWeight || 500) + 100); line.append(sp); }
   if (showS && showD) line.append(document.createTextNode(' '));
   if (showD) line.append(document.createTextNode(fmtDate(m.date)));
   return line;
@@ -141,31 +144,45 @@ window.buildContent = function (c, z, live, timers, alive) {
   }
   if (z.type === 'ticker' && z.mode === 'slides') {
     // One announcement at a time: hold each for its duration, then slide or fade to the next.
-    let msgs = (z.items || []).filter(i => i.text).map(i => ({ text: i.text, source: i.source, date: i.date, dur: +i.duration || 8 }));
+    let msgs = (z.items || []).filter(i => i.text).map(i => ({ text: i.text, source: i.source, date: i.date, image: i.image, dur: +i.duration || 8 }));
     if (!msgs.length) msgs = String(z.text || '').split('\n').map(t => t.trim()).filter(Boolean)
-      .map(t => ({ text: t, dur: 8, source: live ? '' : 'Department', date: live ? '' : new Date().toISOString().slice(0, 10), sample: !live }));
+      .map(t => ({ text: t, dur: 8, source: live ? '' : 'Department', date: live ? '' : new Date().toISOString().slice(0, 10), sample: !live, sampleImg: !live }));
     if (!msgs.length) return;
     const dir = z.transition || 'up', ff = fontFamily(z);
     const off = sign => dir === 'left' ? 'translateX(' + (sign * 100) + '%)' : dir === 'up' ? 'translateY(' + (sign * 100) + '%)' : 'translateX(0)';
+    const zoneH = (z.h / 100) * window.SIGN_H, imgPx = tickerImgSize(z);
+    const edge = Math.max(12, Math.round((zoneH - imgPx) / 2));          // same gap around the picture on all sides
     const make = m => {
       const d = el('div');
-      Object.assign(d.style, { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center',
-        alignItems: z.align === 'left' ? 'flex-start' : 'center', padding: '0 ' + U(48), boxSizing: 'border-box', overflow: 'hidden',
+      const withImg = z.showImage !== false && (m.image || m.sampleImg);
+      Object.assign(d.style, { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'row', alignItems: 'center',
+        padding: '0 ' + U(48) + ' 0 ' + U(withImg ? edge : 48), boxSizing: 'border-box', overflow: 'hidden',
         transition: 'transform .6s ease, opacity .6s ease', webkitTransition: '-webkit-transform .6s ease, opacity .6s ease' });
+      if (withImg) {
+        const im = el('div');
+        Object.assign(im.style, { width: U(imgPx), height: U(imgPx), flexShrink: 0, borderRadius: U(z.imgRadius == null ? 18 : +z.imgRadius), marginRight: U(edge),
+          backgroundColor: 'rgba(255,255,255,0.08)', backgroundSize: 'cover', backgroundPosition: 'center', overflow: 'hidden' });
+        if (m.image) im.style.backgroundImage = 'url("' + encodeURI(m.image) + '")';
+        d.append(im);
+      }
+      const col = el('div');
+      Object.assign(col.style, { flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center',
+        alignItems: z.align === 'left' || withImg && z.align !== 'center' ? 'flex-start' : 'center' });
       const gap = U(Math.round(z.fontSize * 0.12));
       const meta = metaLine(z, ff, m);
-      if (meta) { meta.style.marginBottom = gap; if (m.sample) meta.style.opacity = 0.45; d.append(meta); }
+      if (meta) { meta.style.marginBottom = gap; if (m.sample) meta.style.opacity = 0.45; col.append(meta); }
       const t = el('div', null, m.text);
-      Object.assign(t.style, { color: z.color, fontSize: U(z.fontSize), fontWeight: z.weight || 700, fontFamily: ff, whiteSpace: 'nowrap', lineHeight: 1.15, textAlign: z.align === 'left' ? 'left' : 'center' });
-      d.append(t);
-      return { d, t };
+      Object.assign(t.style, { color: z.color, fontSize: U(z.fontSize), fontWeight: z.weight || 700, fontFamily: ff, whiteSpace: 'nowrap', lineHeight: 1.15,
+        textAlign: col.style.alignItems === 'center' ? 'center' : 'left', maxWidth: '100%' });
+      col.append(t); d.append(col);
+      return { d, t, col };
     };
-    // Shrink a long announcement to fit the zone; past 60% size, let it wrap instead.
-    const fit = (box, t) => {
+    // Shrink a long headline to fit; past 60% size, let it wrap instead.
+    const fit = (col, t) => {
       t.style.fontSize = U(z.fontSize); t.style.whiteSpace = 'nowrap';
-      const room = box.clientWidth - 2 * (parseFloat(getComputedStyle(box).paddingLeft) || 0);
-      if (!(room > 0) || t.offsetWidth <= room) return;
-      const r = room / t.offsetWidth;
+      const room = col.clientWidth;
+      if (!(room > 0) || t.scrollWidth <= room) return;
+      const r = room / t.scrollWidth;
       if (r >= 0.6) t.style.fontSize = U(Math.floor(z.fontSize * r));
       else { t.style.fontSize = U(Math.floor(z.fontSize * 0.6)); t.style.whiteSpace = 'normal'; }
     };
@@ -176,8 +193,8 @@ window.buildContent = function (c, z, live, timers, alive) {
       const animate = live && msgs.length > 1 && !first;
       if (animate) { s.d.style.transform = s.d.style.webkitTransform = off(1); if (dir === 'fade') s.d.style.opacity = 0; }
       c.append(s.d);
-      fit(s.d, s.t);
-      if (z.font) whenFontsReady(() => fit(s.d, s.t));
+      fit(s.col, s.t);
+      if (z.font || z.metaFont) whenFontsReady(() => fit(s.col, s.t));
       if (animate) {
         const old = cur;
         requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -201,6 +218,12 @@ window.buildContent = function (c, z, live, timers, alive) {
     const ffs = fontFamily(z);
     items.forEach((it, k) => {
       if (k) t.append(document.createTextNode('     •     '));
+      if (z.showImage !== false && it.image) {
+        const im = el('span');
+        Object.assign(im.style, { display: 'inline-block', width: '1.2em', height: '1.2em', verticalAlign: 'middle', marginRight: '0.5em',
+          borderRadius: U(Math.round((z.imgRadius == null ? 18 : +z.imgRadius) * 0.5)), backgroundImage: 'url("' + encodeURI(it.image) + '")', backgroundSize: 'cover', backgroundPosition: 'center' });
+        t.append(im);
+      }
       const meta = metaLine(z, ffs, it, 'span');
       if (meta) { meta.style.verticalAlign = 'middle'; meta.style.marginRight = '0.6em'; t.append(meta); }
       t.append(document.createTextNode(it.text.replace(/\n/g, ' ')));
