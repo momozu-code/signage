@@ -355,6 +355,12 @@ header select{width:auto;min-width:150px}
       </form>
       <div id="creds" class="creds" hidden></div>
     </details>
+    <div class="card" id="storageCard">
+      <h3>File storage</h3>
+      <div id="storageInfo" class="muted"></div>
+      <div class="btns" style="margin-top:10px"><button id="moveFiles" class="primary" hidden>Move files to Cloudflare</button></div>
+      <div id="moveLog" class="muted" style="margin-top:8px;white-space:pre-wrap"></div>
+    </div>
     <div id="uList" class="ulist"></div>
   </div>
 </section>
@@ -370,7 +376,7 @@ header select{width:auto;min-width:150px}
 </form></div>
 
 <script src="supabase.js?v=5"></script>
-<script src="config.js?v=5"></script>
+<script src="config.js?v=15"></script>
 <script src="render.js?v=14"></script>
 <script>
 /* ================= basics ================= */
@@ -412,6 +418,32 @@ function queueSave(key, fn, delay) {
   }, delay == null ? 600 : delay);
 }
 addEventListener('beforeunload', e => { if (Object.keys(saveQ).length) { e.preventDefault(); e.returnValue = ''; } });
+
+/* File storage: Cloudflare R2 through the media Worker when MEDIA_URL is set in config.js; otherwise Supabase Storage. */
+const MEDIA_URL = String(window.MEDIA_URL || '').replace(/\/+$/, '');
+const SUPA_FILES = '/storage/v1/object/public/media/';
+const onSupabase = url => !!url && url.indexOf(SUPA_FILES) >= 0;
+const encKey = path => path.split('/').map(encodeURIComponent).join('/');
+async function authToken() { const { data } = await sb.auth.getSession(); return data.session ? data.session.access_token : ''; }
+async function storeFile(path, blob, contentType) {
+  if (MEDIA_URL) {
+    const res = await fetch(MEDIA_URL + '/' + encKey(path), { method: 'PUT', body: blob,
+      headers: { authorization: 'Bearer ' + await authToken(), 'content-type': contentType || blob.type || 'application/octet-stream' } });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error || 'Upload failed (' + res.status + ')');
+    return { url: j.url, path };
+  }
+  const up = await sb.storage.from('media').upload(path, blob, { contentType: contentType || blob.type, cacheControl: '31536000' });
+  if (up.error) throw up.error;
+  return { url: sb.storage.from('media').getPublicUrl(path).data.publicUrl, path };
+}
+function removeFile(url, path) {
+  if (!path) return;
+  if (url && onSupabase(url)) { sb.storage.from('media').remove([path]).then(() => {}); return; }
+  if (MEDIA_URL && url && url.indexOf(MEDIA_URL) === 0)
+    authToken().then(t => fetch(MEDIA_URL + '/' + encKey(path), { method: 'DELETE', headers: { authorization: 'Bearer ' + t } })).catch(() => {});
+}
+const safeName = n => String(n || 'file').split('/').pop().split('?')[0].replace(/[^A-Za-z0-9._-]+/g, '_');
 
 /* ================= session, roles, data ================= */
 let me = null, isAdmin = false, mySites = [];
@@ -830,9 +862,10 @@ async function uploadFont(f) {
   const name = f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').replace(/[^\w ]+/g, '').trim() || 'Custom font';
   toast('Uploading font ' + name + '…');
   const path = 'fonts/' + uuid() + '-' + f.name.replace(/[^\w.-]+/g, '_');
-  const up = await sb.storage.from('media').upload(path, f, { contentType: f.type || 'font/' + f.name.split('.').pop().toLowerCase(), cacheControl: '31536000' });
-  if (up.error) { toast('Upload failed: ' + up.error.message); return null; }
-  const row = { id: uuid(), name, url: sb.storage.from('media').getPublicUrl(path).data.publicUrl, path };
+  let stored;
+  try { stored = await storeFile(path, f, f.type || 'font/' + f.name.split('.').pop().toLowerCase()); }
+  catch (err) { toast('Upload failed: ' + err.message); return null; }
+  const row = { id: uuid(), name, url: stored.url, path };
   const ins = await sb.from('fonts').insert(row);
   if (ins.error) { toast(ins.error.message); return null; }
   D.fonts.push(row); D.fonts.sort((a, b) => a.name.localeCompare(b.name)); toast('Font "' + name + '" added');
@@ -957,7 +990,7 @@ function contentCard(c) {
     const del = el('button', 'sm danger', '✕'); del.title = 'Delete';
     armButton(del, '✕', async () => {
       const { error } = await sb.from('content').delete().eq('id', c.id); if (error) return toast(error.message);
-      if (c.path) sb.storage.from('media').remove([c.path]).then(() => {});
+      removeFile(c.url, c.path);
       D.content = D.content.filter(x => x.id !== c.id); toast('Deleted'); renderContent();
     }, used ? 'Delete? (in ' + used + ' playlist' + (used > 1 ? 's' : '') + ')' : 'Delete?');
     acts.append(del);
@@ -988,14 +1021,15 @@ async function uploadFiles(files) {
     i++;
     const kind = f.type.startsWith('video') ? 'video' : f.type.startsWith('image') ? 'image' : null;
     if (!kind) { toast(f.name + ' is not an image or video'); continue; }
-    if (f.size > 50 * 1024 * 1024) { toast(f.name + ' is over 50 MB (free plan limit)'); continue; }
+    const maxMB = MEDIA_URL ? 100 : 50;
+    if (f.size > maxMB * 1024 * 1024) { toast(f.name + ' is over ' + maxMB + ' MB'); continue; }
     toast('Uploading ' + i + ' of ' + list.length + ': ' + f.name); setStatus('Uploading…');
     const path = (t.site_id || 'shared') + '/' + uuid() + '-' + f.name.replace(/[^\w.-]+/g, '_');
-    const up = await sb.storage.from('media').upload(path, f, { contentType: f.type, cacheControl: '31536000' });
-    if (up.error) { toast('Upload failed: ' + up.error.message); continue; }
-    const row = { id: uuid(), kind, name: f.name.replace(/\.[^.]+$/, ''), url: sb.storage.from('media').getPublicUrl(path).data.publicUrl, path, size: f.size, duration: 8, folder_id: t.folder_id, site_id: t.site_id };
+    let stored;
+    try { stored = await storeFile(path, f, f.type); } catch (err) { toast('Upload failed: ' + err.message); continue; }
+    const row = { id: uuid(), kind, name: f.name.replace(/\.[^.]+$/, ''), url: stored.url, path, size: f.size, duration: 8, folder_id: t.folder_id, site_id: t.site_id };
     const ins = await sb.from('content').insert(row);
-    if (ins.error) { toast(ins.error.message); sb.storage.from('media').remove([path]); continue; }
+    if (ins.error) { toast(ins.error.message); removeFile(stored.url, path); continue; }
     D.content.unshift(row); n++; if (view === 'content') renderContent();
   }
   setStatus(''); if (n) toast(n + ' file' + (n > 1 ? 's' : '') + ' uploaded');
@@ -1192,16 +1226,15 @@ $('#newsForm').onsubmit = async e => {
     let image_url = nfImageUrl, image_path = nfImagePath;
     if (nfBlob) {
       const path = 'news/' + uuid() + (nfBlobType === 'image/png' ? '.png' : '.jpg');
-      const up = await sb.storage.from('media').upload(path, nfBlob, { contentType: nfBlobType, cacheControl: '31536000' });
-      if (up.error) throw up.error;
-      image_url = sb.storage.from('media').getPublicUrl(path).data.publicUrl; image_path = path;
+      const stored = await storeFile(path, nfBlob, nfBlobType);
+      image_url = stored.url; image_path = path;
     }
     const row = { department: $('#nfDept').value.trim() || null, headline, published_on: $('#nfDate').value || todayStr(),
       all_sites: nfAll, site_ids: nfAll ? [] : nfSites, image_url: image_url || null, image_path: image_path || null };
     if (nfEdit) {
       const old = D.news.find(x => x.id === nfEdit);
       const { error } = await sb.from('news').update(row).eq('id', nfEdit); if (error) throw error;
-      if (old && old.image_path && old.image_path !== row.image_path) sb.storage.from('media').remove([old.image_path]).then(() => {});
+      if (old && old.image_path && old.image_path !== row.image_path) removeFile(old.image_url, old.image_path);
       Object.assign(old, row); toast('Post updated');
     } else {
       row.id = uuid(); row.created_at = new Date().toISOString();
@@ -1244,7 +1277,7 @@ function renderNewsList() {
       const del = el('button', 'sm danger', 'Delete');
       armButton(del, 'Delete', async () => {
         const { error } = await sb.from('news').delete().eq('id', n.id); if (error) return toast(error.message);
-        if (n.image_path) sb.storage.from('media').remove([n.image_path]).then(() => {});
+        removeFile(n.image_url, n.image_path);
         D.news = D.news.filter(x => x.id !== n.id); if (nfEdit === n.id) resetNewsForm(); toast('Post deleted'); renderNewsList();
       });
       acts.append(ed, del);
@@ -1405,7 +1438,62 @@ function siteChips(selected, onToggle) {
   return w;
 }
 let newUserSites = [];
+/* ---- moving existing files from Supabase Storage to Cloudflare R2 ---- */
+function filesOnSupabase() {
+  const list = [];
+  D.content.filter(c => onSupabase(c.url)).forEach(c => list.push({ url: c.url, key: (c.site_id || 'shared') + '/' + safeName(c.path || c.url), kind: 'content', row: c }));
+  D.news.filter(n => onSupabase(n.image_url)).forEach(n => list.push({ url: n.image_url, key: 'news/' + safeName(n.image_path || n.image_url), kind: 'news', row: n }));
+  D.fonts.filter(f => onSupabase(f.url)).forEach(f => list.push({ url: f.url, key: 'fonts/' + safeName(f.path || f.url), kind: 'font', row: f }));
+  D.layouts.forEach(L => (JSON.stringify(L.zones).match(/https?:\/\/[^"]+\/storage\/v1\/object\/public\/media\/[^"]+/g) || [])
+    .forEach(u => { if (!list.some(x => x.url === u)) list.push({ url: u, key: 'shared/' + safeName(u), kind: 'layout' }); }));
+  return list;
+}
+function renderStorage() {
+  const info = $('#storageInfo'), btn = $('#moveFiles'), left = filesOnSupabase();
+  info.textContent = (MEDIA_URL ? 'New uploads go to Cloudflare R2 (' + MEDIA_URL + '). ' : 'New uploads go to Supabase Storage. Add MEDIA_URL in config.js to switch to Cloudflare. ')
+    + (left.length ? left.length + ' file(s) are still on Supabase.' : 'No files left on Supabase.');
+  btn.hidden = !MEDIA_URL || !left.length;
+  btn.textContent = 'Move ' + left.length + ' file(s) to Cloudflare';
+}
+$('#moveFiles').onclick = async () => {
+  const btn = $('#moveFiles'), log = $('#moveLog'), list = filesOnSupabase(), moved = {};
+  btn.disabled = true; let ok = 0, bad = 0; const lines = [];
+  for (const it of list) {
+    log.textContent = 'Moving ' + (ok + bad + 1) + ' of ' + list.length + '…\n' + lines.join('\n');
+    try {
+      if (!moved[it.url]) {
+        const res = await fetch(it.url); if (!res.ok) throw new Error('could not download (' + res.status + ')');
+        const blob = await res.blob();
+        moved[it.url] = await storeFile(it.key, blob, blob.type);
+      }
+      const st = moved[it.url];
+      let q = null;
+      if (it.kind === 'content') q = sb.from('content').update({ url: st.url, path: st.path }).eq('id', it.row.id);
+      if (it.kind === 'news') q = sb.from('news').update({ image_url: st.url, image_path: st.path }).eq('id', it.row.id);
+      if (it.kind === 'font') q = sb.from('fonts').update({ url: st.url, path: st.path }).eq('id', it.row.id);
+      if (q) { const { error } = await q; if (error) throw error; }
+      if (it.kind === 'content') { it.row.url = st.url; it.row.path = st.path; }
+      if (it.kind === 'news') { it.row.image_url = st.url; it.row.image_path = st.path; }
+      if (it.kind === 'font') { it.row.url = st.url; it.row.path = st.path; }
+      ok++;
+    } catch (err) { bad++; lines.push('✕ ' + safeName(it.url) + ': ' + err.message); }
+  }
+  // Layouts can hold file addresses directly (files added before playlists, uploaded fonts): point them at the new copies.
+  for (const L of D.layouts) {
+    let j = JSON.stringify(L.zones), changed = false;
+    Object.keys(moved).forEach(o => { if (j.indexOf(o) >= 0) { j = j.split(o).join(moved[o].url); changed = true; } });
+    if (changed) {
+      L.zones = JSON.parse(j);
+      const { error } = await sb.from('layouts').update({ data: { bg: L.bg, zones: L.zones }, updated_at: new Date().toISOString() }).eq('id', L.id);
+      if (error) { bad++; lines.push('✕ layout ' + L.name + ': ' + error.message); }
+    }
+  }
+  log.textContent = 'Done: ' + ok + ' moved' + (bad ? ', ' + bad + ' failed' : '') + '. Screens switch to the new copies within about 15 seconds. The originals stay in Supabase as a backup.' + (lines.length ? '\n' + lines.join('\n') : '');
+  btn.disabled = false; renderStorage();
+};
+
 function renderUsers() {
+  renderStorage();
   const us = $('#uSites'); us.replaceWith(Object.assign(siteChips(newUserSites, (id, on) => { newUserSites = on ? newUserSites.concat(id) : newUserSites.filter(x => x !== id); }), { id: 'uSites' }));
   const list = $('#uList'); list.innerHTML = '';
   D.profiles.forEach(p => {
