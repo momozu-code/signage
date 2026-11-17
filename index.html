@@ -54,6 +54,7 @@ header select{width:auto;min-width:150px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
 .grid2 .end{display:flex;align-items:flex-end}.grid2 .end button{width:100%}
 .grid3{display:grid;grid-template-columns:1fr 1.3fr auto;gap:8px;margin-top:8px}
+.grid5{display:grid;grid-template-columns:1.1fr 1.3fr 1fr 1.1fr auto;gap:8px;margin-top:8px;align-items:center}
 .btns{display:flex;gap:6px;flex-wrap:wrap}
 .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
 .toolbar input{width:180px}
@@ -193,7 +194,7 @@ header select{width:auto;min-width:150px}
 }
 @media (max-width:640px){
   .nform{grid-template-columns:1fr}.nrow{grid-template-columns:56px 1fr}.nrow .th{width:56px;height:56px}.nrow .acts{grid-column:1/-1;flex-direction:row}
-  .grid2,.grid3,.scr,.urow{grid-template-columns:1fr}.scr .top{flex-wrap:wrap}
+  .grid2,.grid3,.grid5,.scr,.urow{grid-template-columns:1fr}.scr .top{flex-wrap:wrap}
   .toolbar input{width:100%}
 }
 </style>
@@ -334,8 +335,8 @@ header select{width:auto;min-width:150px}
     </details>
     <details class="card" id="sitesBox" data-adminbox><summary>🏢 Sites / offices (<span id="siteCount">0</span>)</summary>
       <div id="siteList"></div>
-      <form id="siteForm" class="grid3"><input id="sName" placeholder="New site, e.g. Makati Office" required><input id="sAddr" placeholder="Address (optional)"><button class="primary">Add site</button></form>
-      <div class="note">Deleting a site also deletes its content, folders and playlists. Its screens move to "No site".</div>
+      <form id="siteForm" class="grid5"><input id="sName" placeholder="New site, e.g. Makati Office" required><input id="sAddr" placeholder="Address (optional)"><select id="sCountry" aria-label="Country"></select><select id="sTz" aria-label="Time zone"></select><button class="primary">Add site</button></form>
+      <div class="note">The country sets the site's time zone. Clocks on that site's screens show its local time. Deleting a site also deletes its content, folders and playlists, and its screens move to "No site".</div>
     </details>
     <div id="sList" class="slist"></div>
   </div>
@@ -377,7 +378,8 @@ header select{width:auto;min-width:150px}
 
 <script src="supabase.js?v=5"></script>
 <script src="config.js?v=15"></script>
-<script src="render.js?v=14"></script>
+<script src="render.js?v=15"></script>
+<script src="countries.js?v=15"></script>
 <script>
 /* ================= basics ================= */
 const W = SIGN_W, H = SIGN_H;
@@ -475,6 +477,23 @@ const canEdit = x => isAdmin || (!!x && !!x.site_id && mySites.includes(x.site_i
 const inSite = x => curSite === 'all' || x.site_id === curSite || !x.site_id;           // content, folders, playlists (shared shows everywhere)
 const newSite = () => curSite !== 'all' ? curSite : (isAdmin ? null : (mySites[0] || null));
 const siteChoices = () => (isAdmin ? [['', 'Shared (all sites)']] : []).concat(D.sites.filter(s => isAdmin || mySites.includes(s.id)).map(s => [s.id, s.name]));
+/* Countries and time zones (countries.js) */
+const COUNTRIES = window.SIGN_COUNTRIES || {};
+const countryOpts = () => [['', 'Country…']].concat(Object.keys(COUNTRIES).map(cc => [cc, COUNTRIES[cc][0]]).sort((a, b) => a[1].localeCompare(b[1])));
+const tzLabel = tz => tz ? tz.split('/').pop().replace(/_/g, ' ') : '';
+const tzOpts = cc => { const z = (COUNTRIES[cc] || [null, []])[1]; return z.length ? z.map(t => [t, tzLabel(t) + (z.length > 1 ? ' (' + t + ')' : '')]) : [['', '—']]; };
+function siteTz(siteId) { const x = D.sites.find(y => y.id === siteId); return (x && x.timezone) || null; }
+function localTime(tz) { try { return new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: tz }); } catch (e) { return ''; } }
+// A country picker plus a time zone picker that follows it.
+function countryTzPickers(country, tz, onChange) {
+  const cs = el('select'), ts = el('select');
+  fillSelect(cs, countryOpts(), country || '');
+  const fillTz = keep => { fillSelect(ts, tzOpts(cs.value), keep && tzOpts(cs.value).some(o => o[0] === keep) ? keep : (tzOpts(cs.value)[0] || [''])[0]); ts.disabled = !cs.value || tzOpts(cs.value).length < 2; };
+  fillTz(tz);
+  cs.onchange = () => { fillTz(null); onChange && onChange(cs.value || null, ts.value || null); };
+  ts.onchange = () => onChange && onChange(cs.value || null, ts.value || null);
+  return { cs, ts };
+}
 function siteBadge(id) { const b = el('span', 'badge2' + (id ? '' : ' shared'), id ? siteName(id) : 'Shared'); return b; }
 
 function renderSiteSel() {
@@ -521,6 +540,7 @@ function newsItemsFor(site, z) {
     .slice(0, n).map(x => ({ id: x.id, kind: 'news', text: x.headline, source: x.department, date: x.published_on, image: x.image_url, duration: +z.newsDuration || 8 }));
 }
 function resolveZone(z, overrides, site) {
+  if (z.type === 'clock') { const tz = siteTz(site === undefined ? (curSite !== 'all' ? curSite : null) : site); return tz ? Object.assign({}, z, { siteTz: tz }) : z; }
   if (z.type !== 'media' && z.type !== 'ticker') return z;
   if (z.type === 'ticker' && z.feed === 'news') return Object.assign({}, z, { items: newsItemsFor(site === undefined ? (curSite !== 'all' ? curSite : undefined) : site, z) });
   const pid = (overrides && overrides[z.id]) || z.playlist_id;
@@ -826,7 +846,17 @@ function renderInspector() {
     const r = el('div', 'row');
     r.append(fld('Size (px)', inp('number', z.fontSize, i => upd(() => z.fontSize = Math.max(16, +i.value || 100)), { min: 16 })), fld('Colour', inp('color', z.color, i => upd(() => z.color = i.value))));
     insp.append(r, fld('Weight', seg([['400', 'Regular'], ['500', 'Medium'], ['700', 'Bold'], ['800', 'Heavy']], String(z.weight || 700), v => upd(() => z.weight = +v))),
-      fld('Format', seg([['12', '12-hour'], ['24', '24-hour']], z.format, v => upd(() => z.format = v))), fld('Date', seg([['1', 'Show'], ['0', 'Hide']], z.showDate ? '1' : '0', v => upd(() => z.showDate = v === '1'))));
+      fld('Format', seg([['12', '12-hour'], ['24', '24-hour']], z.format, v => upd(() => z.format = v))), fld('Date', seg([['1', 'Show'], ['0', 'Hide']], z.showDate ? '1' : '0', v => upd(() => z.showDate = v === '1', true))));
+    if (z.showDate) {
+      const dc = inp('color', z.dateColor || z.color, i => upd(() => z.dateColor = i.value));
+      const dw = el('div'); dw.append(dc);
+      const same = el('button', 'sm ghost', 'Same as time (softer)'); same.type = 'button'; same.onclick = () => upd(() => delete z.dateColor, true); dw.append(same);
+      insp.append(fld('Date colour', dw));
+    }
+    const allZones = Object.keys(COUNTRIES).reduce((a, cc) => a.concat(COUNTRIES[cc][1].map(t => [t, COUNTRIES[cc][0] + ' · ' + tzLabel(t)])), []).sort((a, b) => a[1].localeCompare(b[1]));
+    insp.append(fld('Time zone', sel([['', "Screen's site (automatic)"]].concat(allZones), z.timeZone || '', v => upd(() => { if (v) z.timeZone = v; else delete z.timeZone; }, true))));
+    insp.append(el('div', 'muted', z.timeZone ? 'Always shows ' + tzLabel(z.timeZone) + ' time (now ' + localTime(z.timeZone) + '), whatever site the screen is at.'
+      : 'Shows the local time of each screen\'s site (set the country in Screens → Sites). Sites without a country use the TV\'s own clock.'));
   }
   insp.append(el('hr'));
   const b = el('div', 'btns'), zs = L.zones, idx = zs.indexOf(z);
@@ -1307,12 +1337,16 @@ function renderScreens() {
 
   // sites (admin)
   $('#sitesBox').hidden = !isAdmin;
+  if (isAdmin && !$('#sCountry').options.length) {
+    const pk = countryTzPickers('', '', null);
+    $('#sCountry').replaceWith(Object.assign(pk.cs, { id: 'sCountry' })); $('#sTz').replaceWith(Object.assign(pk.ts, { id: 'sTz' }));
+  }
   if (isAdmin) {
     $('#siteCount').textContent = D.sites.length;
     const sl = $('#siteList'); sl.innerHTML = '';
     if (!D.sites.length) sl.append(el('div', 'muted', 'No sites yet. Add your offices below.'));
     D.sites.forEach(x => {
-      const r = el('div', 'grid3');
+      const r = el('div', 'grid5');
       const n = el('input'); n.value = x.name; n.onchange = async () => { if (n.value.trim() && await upd8('sites', x.id, { name: n.value.trim() }, 'Site renamed')) { x.name = n.value.trim(); renderSiteSel(); renderScreens(); } };
       const a = el('input'); a.value = x.address || ''; a.placeholder = 'Address'; a.onchange = async () => { if (await upd8('sites', x.id, { address: a.value }, 'Address saved')) x.address = a.value; };
       const d = el('button', 'danger', 'Delete');
@@ -1320,7 +1354,10 @@ function renderScreens() {
         const { error } = await sb.from('sites').delete().eq('id', x.id); if (error) return toast(error.message);
         toast('Site deleted'); if (curSite === x.id) { curSite = 'all'; store('signage.site', 'all'); } await loadAll(); renderSiteSel(); renderScreens();
       }, 'Tap again (deletes its content)');
-      r.append(n, a, d); sl.append(r);
+      const pk = countryTzPickers(x.country, x.timezone, async (country, timezone) => {
+        if (await upd8('sites', x.id, { country, timezone }, timezone ? 'Time zone: ' + tzLabel(timezone) + ' (' + localTime(timezone) + ')' : 'Saved')) { x.country = country; x.timezone = timezone; renderScreens(); }
+      });
+      r.append(n, a, pk.cs, pk.ts, d); sl.append(r);
     });
   }
 
@@ -1331,7 +1368,8 @@ function renderScreens() {
   groups.filter(g => g.items.length || g.site).forEach(g => {
     const h = el('div', 'ghead'); const t = el('div');
     const on = g.items.filter(isOnline).length;
-    t.append(el('b', null, g.site ? g.site.name : 'No site'), el('small', null, (g.site && g.site.address ? g.site.address + ' · ' : '') + g.items.length + ' screen' + (g.items.length === 1 ? '' : 's') + ' · ' + on + ' online'));
+    const where = g.site && g.site.country && COUNTRIES[g.site.country] ? COUNTRIES[g.site.country][0] + (g.site.timezone ? ' · ' + localTime(g.site.timezone) + ' local time' : '') + ' · ' : '';
+    t.append(el('b', null, g.site ? g.site.name : 'No site'), el('small', null, (g.site && g.site.address ? g.site.address + ' · ' : '') + where + g.items.length + ' screen' + (g.items.length === 1 ? '' : 's') + ' · ' + on + ' online'));
     h.append(t);
     if (g.items.length > 1) {
       const all = el('div', 'all'); const ls = el('select');
@@ -1405,7 +1443,7 @@ $('#refreshScreens').onclick = async () => { const { data, error } = await sb.fr
 $('#siteForm').onsubmit = async e => {
   e.preventDefault();
   const name = $('#sName').value.trim(); if (!name) return;
-  const row = { id: uuid(), name, address: $('#sAddr').value.trim() || null };
+  const row = { id: uuid(), name, address: $('#sAddr').value.trim() || null, country: $('#sCountry').value || null, timezone: $('#sTz').value || null };
   const { error } = await sb.from('sites').insert(row); if (error) return toast(error.message);
   D.sites.push(row); D.sites.sort((a, b) => a.name.localeCompare(b.name));
   $('#sName').value = ''; $('#sAddr').value = ''; toast('Site added'); renderSiteSel(); renderScreens();

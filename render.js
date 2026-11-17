@@ -249,11 +249,18 @@ window.buildContent = function (c, z, live, timers, alive) {
     const tm = el('div'), dt = el('div');
     const ff = fontFamily(z);
     Object.assign(tm.style, { color: z.color, fontSize: U(z.fontSize), fontWeight: z.weight || 700, lineHeight: 1, letterSpacing: '-.02em', fontVariantNumeric: 'tabular-nums', fontFamily: ff });
-    Object.assign(dt.style, { color: z.color, opacity: .7, fontSize: U(Math.round(z.fontSize * .32)), marginTop: U(Math.round(z.fontSize * .18)), fontWeight: 500, fontFamily: ff });
+    Object.assign(dt.style, { color: z.dateColor || z.color, opacity: z.dateColor ? 1 : .7, fontSize: U(Math.round(z.fontSize * .32)),
+      marginTop: U(Math.round(z.fontSize * .18)), fontWeight: 500, fontFamily: ff });
+    // Time zone: the zone's own setting, else the screen's site (from the dashboard), else the device's local time.
+    const tz = z.timeZone || z.siteTz || undefined;
+    const fmt = (d, opts) => {
+      try { return tz ? d.toLocaleString([], Object.assign({ timeZone: tz }, opts)) : d.toLocaleString([], opts); }
+      catch (e) { return d.toLocaleString([], opts); }   // unknown zone on an old device: fall back to local time
+    };
     const tick = () => {
       const d = new Date();
-      tm.textContent = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: z.format !== '24' });
-      dt.textContent = d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+      tm.textContent = fmt(d, { hour: 'numeric', minute: '2-digit', hour12: z.format !== '24' });
+      dt.textContent = fmt(d, { weekday: 'long', month: 'long', day: 'numeric' });
     };
     tick(); timers.push(setInterval(tick, 1000));
     c.append(tm); if (z.showDate) c.append(dt);
