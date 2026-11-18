@@ -1269,7 +1269,7 @@ $('#newsForm').onsubmit = async e => {
     } else {
       row.id = uuid(); row.created_at = new Date().toISOString();
       const { error } = await sb.from('news').insert(row); if (error) throw error;
-      D.news.unshift(row); toast('Posted. Screens pick it up within about 15 seconds');
+      D.news.unshift(row); toast('Posted. Screens pick it up within about 30 seconds');
     }
     resetNewsForm(); renderNews();
   } catch (err) { toast('Not saved: ' + err.message); }
@@ -1324,7 +1324,7 @@ $('#newsPreview').onclick = () => {
 
 /* ================= SCREENS ================= */
 const layoutOpts = () => [['', '— No layout —']].concat(D.layouts.map(L => [L.id, L.name]));
-const isOnline = s => s.last_seen && (Date.now() - new Date(s.last_seen).getTime()) < 60000;
+const isOnline = s => s.last_seen && (Date.now() - new Date(s.last_seen).getTime()) < 90000;
 async function upd8(table, id, patch, msg) { const { error } = await sb.from(table).update(patch).eq('id', id); toast(error ? error.message : msg); return !error; }
 function renderScreens() {
   const list = $('#sList'); list.innerHTML = '';
@@ -1526,7 +1526,7 @@ $('#moveFiles').onclick = async () => {
       if (error) { bad++; lines.push('✕ layout ' + L.name + ': ' + error.message); }
     }
   }
-  log.textContent = 'Done: ' + ok + ' moved' + (bad ? ', ' + bad + ' failed' : '') + '. Screens switch to the new copies within about 15 seconds. The originals stay in Supabase as a backup.' + (lines.length ? '\n' + lines.join('\n') : '');
+  log.textContent = 'Done: ' + ok + ' moved' + (bad ? ', ' + bad + ' failed' : '') + '. Screens switch to the new copies within about 30 seconds. The originals stay in Supabase as a backup.' + (lines.length ? '\n' + lines.join('\n') : '');
   btn.disabled = false; renderStorage();
 };
 
