@@ -27,7 +27,7 @@ import android.widget.Toast;
 
 /**
  * Full-screen web player for the signage page.
- * Keeps the TV awake, retries when offline, ignores the Back button,
+ * Keeps the TV awake, retries when offline, Back shows the screen's name (instead of closing),
  * and reloads every 12 hours to pick up player updates. Menu button reloads now.
  */
 public class MainActivity extends Activity {
@@ -36,6 +36,7 @@ public class MainActivity extends Activity {
     private static final long REFRESH_MS = 12L * 60 * 60 * 1000;
 
     private WebView web;
+    private boolean wasPaused = false;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     private final Runnable retry = new Runnable() {
@@ -155,7 +156,10 @@ public class MainActivity extends Activity {
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_BACK) return true;          // don't close by accident; Home still works
+        if (keyCode == KeyEvent.KEYCODE_BACK) {                      // don't close; show which screen this is instead
+            web.evaluateJavascript("window.signInfo && window.signInfo()", null);
+            return true;
+        }
         if (keyCode == KeyEvent.KEYCODE_MENU) { load(); return true; } // reload now
         return super.onKeyDown(keyCode, event);
     }
@@ -165,10 +169,13 @@ public class MainActivity extends Activity {
         super.onResume();
         web.onResume();
         hideSystemUi();
+        // Back from the Home screen: reload the player fresh so videos are sized correctly.
+        if (wasPaused) { wasPaused = false; load(); }
     }
 
     @Override
     protected void onPause() {
+        wasPaused = true;
         web.onPause();
         super.onPause();
     }

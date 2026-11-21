@@ -18,6 +18,16 @@ html,body{margin:0;width:100%;height:100%;background:#000;color:#fff;overflow:hi
 #pair p{margin:0;font-size:30px;color:#9aa1b2;max-width:1200px}
 #status{position:absolute;right:20px;bottom:16px;font-size:16px;color:#556;opacity:.8}
 [hidden]{display:none!important}
+/* "This screen" card, shown when Back is pressed on the remote */
+#info{position:absolute;top:0;right:0;bottom:0;left:0;z-index:20;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);opacity:0;transition:opacity .35s ease;pointer-events:none}
+#info.on{opacity:1}
+#info .card{background:#141414;border:1px solid rgba(255,255,255,.12);border-radius:1.6vw;padding:2.6vw 3.6vw;min-width:34vw;max-width:70vw;box-shadow:0 2vw 6vw rgba(0,0,0,.6)}
+#info .eb{font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:.95vw;letter-spacing:.16em;color:#a8a296;text-transform:uppercase}
+#info .eb b{display:inline-block;width:.7vw;height:.7vw;border-radius:50%;background:#fa0060;margin-right:.6vw;vertical-align:middle}
+#info .nm{font-size:4.4vw;font-weight:700;color:#f6f4ee;letter-spacing:-.03em;line-height:1.05;margin:.8vw 0 .6vw}
+#info .nm i{font-style:normal;color:#fa0060}
+#info .where{font-size:1.7vw;color:rgba(246,244,238,.8)}
+#info .meta{margin-top:1.6vw;padding-top:1.2vw;border-top:1px solid rgba(255,255,255,.1);font-size:1vw;color:#a8a296;font-family:'Geist Mono',ui-monospace,Menlo,monospace;letter-spacing:.04em}
 </style>
 </head>
 <body>
@@ -29,10 +39,11 @@ html,body{margin:0;width:100%;height:100%;background:#000;color:#fff;overflow:hi
 </div>
 <div id="status"></div>
 <div id="diag" hidden></div>
+<div id="info" hidden><div class="card"><div class="eb"><b></b>This screen</div><div class="nm"></div><div class="where"></div><div class="meta"></div></div></div>
 
-<script src="supabase.js?v=17"></script>
-<script src="config.js?v=17"></script>
-<script src="render.js?v=17"></script>
+<script src="supabase.js?v=18"></script>
+<script src="config.js?v=18"></script>
+<script src="render.js?v=18"></script>
 <script>
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: false } });
 const stage = document.getElementById('stage'), pair = document.getElementById('pair');
@@ -69,7 +80,7 @@ function diag() {
     const media = m ? (m.tagName === 'VIDEO' ? 'video ' + (m.error ? 'ERR' + m.error.code : 'rs' + m.readyState) : 'img ' + (m.complete ? (m.naturalWidth ? 'ok' : 'FAIL') : 'loading')) : '';
     return (i + 1) + ' ' + (z.dataset.type || '?') + ' @' + Math.round(r.left) + ',' + Math.round(r.top) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height) + ' inner ' + Math.round(cr.width) + 'x' + Math.round(cr.height) + ' ' + media;
   });
-  box.textContent = 'Player v17 · Browser ' + browserVer + ' · viewport ' + v.w + 'x' + v.h + ' (inner ' + innerWidth + 'x' + innerHeight + ') · dpr ' + (window.devicePixelRatio || 1) + '' +
+  box.textContent = 'Player v18 · Browser ' + browserVer + ' · viewport ' + v.w + 'x' + v.h + ' (inner ' + innerWidth + 'x' + innerHeight + ') · dpr ' + (window.devicePixelRatio || 1) + '' +
     '\n' + zs.join('\n') + (errors.length ? '\nErrors: ' + errors.slice(-3).join(' | ') : '');
 }
 let diagUntil = 0;
@@ -134,13 +145,16 @@ function showPair(code, msg) {
 }
 function status(t) { document.getElementById('status').textContent = t || (pair.hidden ? '' : 'Browser ' + browserVer); }
 
-let knownVersion = null;
+let knownVersion = null, online = false;
+let screenInfo = (() => { try { return JSON.parse(store('signage.info')) || null; } catch (e) { return null; } })();
 async function poll() {
   try {
     let { data, error } = await sb.rpc('screen_config', { p_device: device, p_known: knownVersion });
     if (error) throw error;
     if (data && data.same) { status(''); return; }          // nothing changed since the last check
     knownVersion = data && data.v ? data.v : null;
+    if (data) { screenInfo = { name: data.name, site: data.site, location: data.location, code: data.pair_code, paired: data.paired }; store('signage.info', JSON.stringify(screenInfo)); }
+    online = true;
     if (!data) {
       const r = await sb.rpc('register_screen', { p_device: device });
       if (r.error) throw r.error;
@@ -157,6 +171,7 @@ async function poll() {
     }
   } catch (e) {
     // Offline or server problem: keep showing whatever is on screen, or the last layout we saved.
+    online = false;
     status('Offline · retrying');
     if (shownKey === null) {
       const last = store('signage.lastLayout');
@@ -165,6 +180,21 @@ async function poll() {
     }
   }
 }
+
+// Show which screen this is: called by the Fire Stick app when Back is pressed (also Esc / i on a keyboard).
+let infoTimer = null;
+window.signInfo = function () {
+  const box = document.getElementById('info');
+  if (box.classList.contains('on')) { box.classList.remove('on'); clearTimeout(infoTimer); setTimeout(() => { if (!box.classList.contains('on')) box.hidden = true; }, 400); return; }
+  const n = screenInfo || {};
+  const nm = box.querySelector('.nm'); nm.textContent = n.name || (n.paired === false || !n.name ? 'Not paired yet' : 'Screen');
+  if (n.name) { const dot = document.createElement('i'); dot.textContent = '.'; nm.append(dot); }
+  box.querySelector('.where').textContent = [n.site || (n.paired ? 'No site' : ''), n.location].filter(Boolean).join('  ·  ') || 'Pair it in the dashboard under Screens';
+  box.querySelector('.meta').textContent = ['Code ' + (n.code || '—'), online ? 'Online' : 'Offline', 'Player v18', 'Browser ' + browserVer].join('   ·   ');
+  box.hidden = false; requestAnimationFrame(() => requestAnimationFrame(() => box.classList.add('on')));
+  clearTimeout(infoTimer); infoTimer = setTimeout(window.signInfo, 8000);
+};
+document.addEventListener('keydown', e => { if (e.key === 'Escape' || e.key === 'i' || e.key === 'GoBack' || e.keyCode === 4) { e.preventDefault(); window.signInfo(); } });
 
 // Keep the TV awake where the browser allows it (the Fire Stick app also does this natively).
 async function wake() { try { if (navigator.wakeLock) await navigator.wakeLock.request('screen'); } catch (e) {} }
