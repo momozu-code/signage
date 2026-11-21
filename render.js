@@ -35,6 +35,43 @@ function fontFamily(z) {
 window.releaseMedia = function (n) {
   if (n && n.tagName === 'VIDEO') { try { n.onended = n.onerror = null; n.pause(); n.removeAttribute('src'); n.load(); } catch (e) {} }
 };
+// Loading spinner shown in a media zone until its first picture or video is ready (ibex red ring).
+function ensureSpinStyle() {
+  if (document.getElementById('sign-spin-style')) return;
+  const st = document.createElement('style'); st.id = 'sign-spin-style';
+  st.textContent = '@-webkit-keyframes signspin{to{-webkit-transform:rotate(360deg)}}@keyframes signspin{to{transform:rotate(360deg)}}'
+    + '@-webkit-keyframes signpulse{50%{opacity:.35}}@keyframes signpulse{50%{opacity:.35}}';
+  document.head.appendChild(st);
+}
+window.makeLoader = function (z) {
+  ensureSpinStyle();
+  const dim = Math.min((z.w / 100) * window.SIGN_W, (z.h / 100) * window.SIGN_H);
+  const size = Math.max(28, Math.min(84, Math.round(dim * 0.12)));
+  const wrap = el('div', 'sload');
+  Object.assign(wrap.style, { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: 'radial-gradient(circle at 50% 50%, rgba(250,0,96,0.10), rgba(0,0,0,0) 60%)', transition: 'opacity .4s ease', zIndex: 3, pointerEvents: 'none' });
+  const ring = el('div');
+  const bw = Math.max(3, Math.round(size * 0.09));
+  Object.assign(ring.style, { width: U(size), height: U(size), boxSizing: 'border-box', borderRadius: '50%',
+    border: U(bw) + ' solid rgba(255,255,255,0.14)', borderTopColor: '#FA0060', borderRightColor: '#FF6B2E',
+    webkitAnimation: 'signspin .9s linear infinite', animation: 'signspin .9s linear infinite' });
+  wrap.style.webkitAnimation = wrap.style.animation = 'signpulse 2.4s ease-in-out infinite';
+  wrap.append(ring);
+  return wrap;
+};
+// Calls cb once the picture or video can be shown (or after a timeout, so a slow file never blocks the playlist).
+function whenReady(m, cb, timers) {
+  let done = false;
+  const go = () => { if (done) return; done = true; cb(); };
+  if (m.tagName === 'IMG') {
+    if (m.complete && m.naturalWidth) { go(); return; }
+    m.addEventListener('load', go); m.addEventListener('error', go);
+  } else {
+    if (m.readyState >= 3) { go(); return; }
+    m.addEventListener('playing', go); m.addEventListener('canplay', go); m.addEventListener('error', go);
+  }
+  const t = setTimeout(go, 12000); timers.push(t);
+}
 // The player can supply a locally saved copy of a file (see player.html); otherwise use the web address.
 function mediaSrc(url) { return window.SIGN_MEDIA ? window.SIGN_MEDIA(url) : url; }
 // Ticker announcement parts: small source line, headline, small date line.
@@ -97,6 +134,7 @@ window.buildContent = function (c, z, live, timers, alive) {
     // A timeout that removes itself from the list once it has run, so the list doesn't grow forever.
     const later = (fn, ms) => { const id = setTimeout(() => { const k = timers.indexOf(id); if (k >= 0) timers.splice(k, 1); fn(); }, ms); timers.push(id); };
     let i = 0, curEl = null, loops = 0;
+    let loader = window.makeLoader(z); c.append(loader);
     const next = () => { if (alive()) show(); };
     const show = () => {
       const it = items[i % items.length]; i++;
@@ -117,18 +155,19 @@ window.buildContent = function (c, z, live, timers, alive) {
         const p = m.play && m.play(); if (p && p.catch) p.catch(() => {});
       } else {
         m = el('img', 'm'); m.src = mediaSrc(it.url);
-        if (items.length > 1) later(next, Math.max(1, +it.duration || 8) * 1000);
       }
       m.style.objectFit = z.fit;
+      // Load the new item behind the current one; fade it in only when it's ready, so there's never a blank zone.
       const old = curEl; curEl = m;
-      const fade = !!old && items.length > 1;
-      if (fade) m.style.opacity = 0;
-      c.append(m);
-      if (fade) requestAnimationFrame(() => requestAnimationFrame(() => { m.style.opacity = 1; }));
-      if (old) {
-        if (fade) later(() => { releaseMedia(old); old.remove(); }, 700);
-        else { releaseMedia(old); old.remove(); }
-      }
+      m.style.opacity = 0;
+      if (loader) c.insertBefore(m, loader); else c.append(m);
+      whenReady(m, () => {
+        if (!alive() || curEl !== m) return;
+        requestAnimationFrame(() => requestAnimationFrame(() => { m.style.opacity = 1; }));
+        if (loader) { const L = loader; loader = null; L.style.opacity = 0; later(() => L.remove(), 450); }
+        if (old) later(() => { releaseMedia(old); old.remove(); }, 700);
+        if (it.kind !== 'video' && items.length > 1) later(next, Math.max(1, +it.duration || 8) * 1000);  // image time counts once it's visible
+      }, timers);
     };
     show();
     return;
